@@ -336,16 +336,6 @@ def _validate_choices_and_answer(
             )
             return
 
-        if _is_nonblank_string(answer) and answer != choices[answer_index]:
-            issues.append(
-                _issue(
-                    item,
-                    line_number,
-                    "answer",
-                    "answer does not match choices[answer_index]",
-                )
-            )
-
 
 def _validate_string_list(
     item: Mapping[str, Any],

@@ -100,10 +100,15 @@ class ValidateItemsTests(unittest.TestCase):
 
         self.assert_issue(report, "answer_index", "out of bounds")
 
-    def test_bad_mcq_answer_mapping_is_reported(self) -> None:
-        report = validate_items([valid_mcq(answer="Wait.", answer_index=0)])
+    def test_mcq_answer_key_is_allowed_when_answer_index_is_set(self) -> None:
+        report = validate_items([valid_mcq(answer="A", answer_index=0)])
 
-        self.assert_issue(report, "answer", "does not match")
+        self.assertTrue(report.ok, report.to_dict())
+
+    def test_mcq_answer_must_match_choice_when_answer_index_is_missing(self) -> None:
+        report = validate_items([valid_mcq(answer="A", answer_index=None)])
+
+        self.assert_issue(report, "answer", "must appear in choices")
 
     def test_open_ended_requires_rubric(self) -> None:
         report = validate_items([valid_open_ended(rubric=None)])

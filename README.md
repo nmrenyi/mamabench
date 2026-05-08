@@ -51,6 +51,17 @@ Common fields include:
 
 Supported `set_type` values are `mcq`, `open_ended`, and `safety`.
 
+For MCQ-style rows, `answer_index` is the authoritative normalized index into
+`choices`. The `answer` field may preserve the source answer key, such as `A`,
+or contain the full answer text when that is how the source represents answers.
+If `answer_index` is omitted, `answer` must match one of the normalized choices.
+
+Perturbation rows must include both `perturbation_of` and `perturbation_type`.
+By default, validation allows `perturbation_of` to point outside the current
+file because split artifacts such as `safety.jsonl` may reference originals in
+`mcq.jsonl`. Use strict reference checking when validating a complete artifact
+or when passing known target IDs.
+
 ## Validate sample data
 
 ```bash
@@ -59,6 +70,20 @@ python3 scripts/validate_mamabench.py data/samples/sample.jsonl
 
 The command prints a JSON validation report and exits with status `0` when the
 file is valid.
+
+To require perturbation references to resolve against the current file:
+
+```bash
+python3 scripts/validate_mamabench.py --check-perturbation-refs data/samples/sample.jsonl
+```
+
+To validate a split file against IDs from another JSONL artifact:
+
+```bash
+python3 scripts/validate_mamabench.py \
+  --known-ids-jsonl data/processed/v0.1/mcq.jsonl \
+  data/processed/v0.1/safety.jsonl
+```
 
 ## Summarize sample data
 
@@ -84,4 +109,3 @@ flow:
 ```text
 raw source -> normalized JSONL -> validation -> manifest summary
 ```
-

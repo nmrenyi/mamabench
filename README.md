@@ -8,6 +8,10 @@ This repository is scoped to benchmark construction, validation, and lightweight
 summaries. It does not implement production retrieval, retrieval-label generation,
 model serving, or full model evaluation.
 
+Generated benchmark artifacts under `data/processed/` are not tracked in Git.
+They should be regenerated from adapter scripts during development and published
+as versioned dataset releases on Hugging Face Datasets when stable.
+
 ## Current status
 
 This is the Step 1 foundation:
@@ -122,6 +126,10 @@ Adapter behavior:
 - all MedMCQA rows are tagged `contamination_risk: high`.
 - broad Pediatrics rows are retained; rows that are not clearly neonatal or
   infant are labeled with `clinical_domain: unknown` and tagged `pediatrics`.
+
+The command writes local generated files under `data/processed/`, which is
+ignored by Git. Release-ready artifacts should be uploaded to Hugging Face
+Datasets rather than committed to this repository.
 
 ## Run tests
 

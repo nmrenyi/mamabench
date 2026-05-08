@@ -39,6 +39,7 @@ Common fields include:
 - `choices`
 - `answer`
 - `answer_index`
+- `source_answer`
 - `rubric`
 - `tags`
 - `icd10_codes`
@@ -51,10 +52,12 @@ Common fields include:
 
 Supported `set_type` values are `mcq`, `open_ended`, and `safety`.
 
-For MCQ-style rows, `answer_index` is the authoritative normalized index into
-`choices`. The `answer` field may preserve the source answer key, such as `A`,
-or contain the full answer text when that is how the source represents answers.
-If `answer_index` is omitted, `answer` must match one of the normalized choices.
+For MCQ-style rows, `answer` is the normalized full correct answer text and is
+safe for downstream scorers. When `answer_index` is present, `answer` must equal
+`choices[answer_index]`. If `answer_index` is omitted, `answer` must still match
+one of the normalized choices. Use `source_answer` to preserve a source-native
+answer key or raw answer value, such as `A`, `1`, or `null` when no meaningful
+raw source answer exists.
 
 Perturbation rows must include both `perturbation_of` and `perturbation_type`.
 By default, validation allows `perturbation_of` to point outside the current

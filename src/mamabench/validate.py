@@ -194,6 +194,7 @@ def _validate_item(item: Mapping[str, Any], line_number: int) -> list[Validation
     for field in ("source_id", "safety_type", "perturbation_of", "perturbation_type"):
         _validate_nullable_string(item, line_number, field, issues)
 
+    _validate_source_answer(item, line_number, issues)
     _validate_string_list(item, line_number, "tags", issues)
     _validate_string_list(item, line_number, "icd10_codes", issues)
     _validate_provenance(item, line_number, issues)
@@ -384,6 +385,29 @@ def _validate_nullable_string(
         issues.append(
             _issue(item, line_number, field, "must be a non-empty string or null")
         )
+
+
+def _validate_source_answer(
+    item: Mapping[str, Any],
+    line_number: int,
+    issues: list[ValidationIssue],
+) -> None:
+    value = item.get("source_answer")
+    if value is None:
+        return
+    if _is_nonblank_string(value):
+        return
+    if _is_int(value):
+        return
+
+    issues.append(
+        _issue(
+            item,
+            line_number,
+            "source_answer",
+            "must be a non-empty string, integer, or null",
+        )
+    )
 
 
 def _validate_provenance(

@@ -26,6 +26,7 @@ def valid_mcq(**overrides: Any) -> dict[str, Any]:
         "choices": ["Refer urgently.", "Wait.", "Ignore.", "Reassure only."],
         "answer": "Refer urgently.",
         "answer_index": 0,
+        "source_answer": "A",
         "rubric": None,
         "tags": ["pregnancy"],
         "icd10_codes": ["O14"],
@@ -53,6 +54,7 @@ def valid_open_ended(**overrides: Any) -> dict[str, Any]:
         choices=None,
         answer=None,
         answer_index=None,
+        source_answer=None,
         rubric={"criteria": [{"name": "action", "points": 1}]},
     )
     row.update(overrides)
@@ -100,10 +102,30 @@ class ValidateItemsTests(unittest.TestCase):
 
         self.assert_issue(report, "answer_index", "out of bounds")
 
-    def test_mcq_answer_key_is_allowed_when_answer_index_is_set(self) -> None:
+    def test_mcq_answer_must_match_choice_when_answer_index_is_set(self) -> None:
         report = validate_items([valid_mcq(answer="A", answer_index=0)])
 
+        self.assert_issue(report, "answer", "does not match")
+
+    def test_source_answer_preserves_source_key(self) -> None:
+        report = validate_items([valid_mcq(source_answer="A")])
+
         self.assertTrue(report.ok, report.to_dict())
+
+    def test_source_answer_allows_integer_keys(self) -> None:
+        report = validate_items([valid_mcq(source_answer=1)])
+
+        self.assertTrue(report.ok, report.to_dict())
+
+    def test_source_answer_rejects_empty_strings(self) -> None:
+        report = validate_items([valid_mcq(source_answer="")])
+
+        self.assert_issue(report, "source_answer", "non-empty string")
+
+    def test_source_answer_rejects_bools(self) -> None:
+        report = validate_items([valid_mcq(source_answer=True)])
+
+        self.assert_issue(report, "source_answer", "integer")
 
     def test_mcq_answer_must_match_choice_when_answer_index_is_missing(self) -> None:
         report = validate_items([valid_mcq(answer="A", answer_index=None)])

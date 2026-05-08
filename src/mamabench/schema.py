@@ -32,6 +32,7 @@ class BenchmarkItem(TypedDict, total=False):
     choices: list[str] | None
     answer: str | None
     answer_index: int | None
+    source_answer: str | int | None
     rubric: Any
     tags: list[str]
     icd10_codes: list[str]
@@ -57,6 +58,7 @@ CANONICAL_FIELDS: Final[tuple[str, ...]] = (
     "choices",
     "answer",
     "answer_index",
+    "source_answer",
     "rubric",
     "tags",
     "icd10_codes",
@@ -105,4 +107,3 @@ CONTROLLED_VOCABULARIES: Final[dict[str, frozenset[str]]] = {
     "contamination_risk": frozenset({"high", "medium", "low", "unknown"}),
     "split": frozenset({"dev", "test", "pilot"}),
 }
-

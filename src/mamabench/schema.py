@@ -83,12 +83,15 @@ CONTROLLED_VOCABULARIES: Final[dict[str, frozenset[str]]] = {
             "obgyn",
             "neonatal",
             "infant",
+            "pediatric",
             "reproductive",
             "general_maternal",
             "unknown",
         }
     ),
-    "age_group": frozenset({"maternal", "neonate", "infant", "adult", "unknown"}),
+    "age_group": frozenset(
+        {"maternal", "neonate", "infant", "child", "adult", "unknown"}
+    ),
     "task_type": frozenset(
         {
             "diagnosis",

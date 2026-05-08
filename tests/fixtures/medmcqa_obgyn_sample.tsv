@@ -2,4 +2,4 @@ id	question	options_formatted	correct_letter	explanation	subject	topic	choice_ty
 000dd38b-1d32-4390-9840-27452bd2e383	Best diagnosis of ovulation is by :	A. Ultrasound | B. Laproscopy | C. Endometrial biopsy | D. Chromotubation	A	Ultrasound	Gynaecology & Obstetrics		single	train
 0036cad0-d22f-453c-b075-322479d19d6e	Emergency contraceptive of choice is:	A. OCP | B. Danazol | C. Levonorgestrel | D. Mifepristone	C	Levonorgestrel is commonly used for emergency contraception.	Gynaecology & Obstetrics	Contraceptives	single	train
 peds-newborn-001	A newborn has poor feeding and jaundice. Which investigation is most appropriate?	A. Serum bilirubin | B. X-ray chest | C. Urine ketones | D. Audiometry	A	Assess neonatal jaundice with serum bilirubin.	Pediatrics	Neonatal Jaundice	single	validation
-
+peds-child-001	A 7-year-old child has recurrent abdominal pain. Which finding is most concerning?	A. Weight loss | B. Mild pain after meals | C. Normal appetite | D. Symptoms only before school	A	Weight loss is a concerning feature in recurrent abdominal pain.	Pediatrics	Abdominal Pain	single	validation

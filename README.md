@@ -124,8 +124,9 @@ Adapter behavior:
 - `source_split`, `subject`, `topic`, `choice_type`, and explanations are
   preserved in provenance.
 - all MedMCQA rows are tagged `contamination_risk: high`.
-- broad Pediatrics rows are retained; rows that are not clearly neonatal or
-  infant are labeled with `clinical_domain: unknown` and tagged `pediatrics`.
+- broad Pediatrics rows are retained as `clinical_domain: pediatric` and
+  `age_group: child`; neonatal and infant rows use more specific labels when
+  keyword evidence is clear.
 
 The command writes local generated files under `data/processed/`, which is
 ignored by Git. Release-ready artifacts should be uploaded to Hugging Face

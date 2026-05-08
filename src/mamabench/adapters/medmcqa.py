@@ -233,6 +233,9 @@ def _classify_domain_and_age(
         age_group = "maternal" if any(k in text for k in MATERNAL_KEYWORDS) else "adult"
         return "obgyn", age_group
 
+    if subject == "Pediatrics":
+        return "pediatric", "child"
+
     return "unknown", "unknown"
 
 

@@ -27,7 +27,7 @@ class MedMCQAAdapterTests(unittest.TestCase):
         report = validate_items(rows)
 
         self.assertTrue(report.ok, report.to_dict())
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 4)
 
     def test_normalizes_answer_text_index_and_source_answer(self) -> None:
         rows = load_medmcqa_tsv(FIXTURE, source_version="test-fixture")
@@ -61,6 +61,8 @@ class MedMCQAAdapterTests(unittest.TestCase):
         self.assertEqual(rows[0]["age_group"], "adult")
         self.assertEqual(rows[2]["clinical_domain"], "neonatal")
         self.assertEqual(rows[2]["age_group"], "neonate")
+        self.assertEqual(rows[3]["clinical_domain"], "pediatric")
+        self.assertEqual(rows[3]["age_group"], "child")
 
     def test_limit_caps_loaded_rows(self) -> None:
         rows = load_medmcqa_tsv(FIXTURE, source_version="test-fixture", limit=2)

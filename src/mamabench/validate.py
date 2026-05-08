@@ -57,7 +57,12 @@ class ValidationReport:
         }
 
 
-def validate_items(items: Iterable[Mapping[str, Any]]) -> ValidationReport:
+def validate_items(
+    items: Iterable[Mapping[str, Any]],
+    *,
+    known_ids: Iterable[str] | None = None,
+    check_perturbation_references: bool = False,
+) -> ValidationReport:
     """Validate a collection of normalized benchmark items."""
 
     rows = list(items)
@@ -103,10 +108,15 @@ def validate_items(items: Iterable[Mapping[str, Any]]) -> ValidationReport:
         if item_id is None:
             continue
 
-    known_ids = {
+    local_ids = {
         item["id"]
         for item in rows
         if isinstance(item, Mapping) and _is_nonblank_string(item.get("id"))
+    }
+    valid_perturbation_targets = local_ids | {
+        item_id
+        for item_id in known_ids or ()
+        if _is_nonblank_string(item_id)
     }
     for line_number, item in enumerate(rows, start=1):
         perturbation_of = item.get("perturbation_of")
@@ -120,13 +130,16 @@ def validate_items(items: Iterable[Mapping[str, Any]]) -> ValidationReport:
                         "perturbation_of cannot reference the same item id",
                     )
                 )
-            elif perturbation_of not in known_ids:
+            elif (
+                check_perturbation_references
+                and perturbation_of not in valid_perturbation_targets
+            ):
                 issues.append(
                     _issue(
                         item,
                         line_number,
                         "perturbation_of",
-                        "perturbation_of does not reference an item in this file",
+                        "perturbation_of does not reference a known item id",
                     )
                 )
 

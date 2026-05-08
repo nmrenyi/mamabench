@@ -120,7 +120,7 @@ class ValidateItemsTests(unittest.TestCase):
 
         self.assert_issue(report, "perturbation_of", "required")
 
-    def test_perturbation_reference_must_exist(self) -> None:
+    def test_perturbation_reference_can_point_outside_current_file(self) -> None:
         report = validate_items(
             [
                 valid_safety(
@@ -128,6 +128,19 @@ class ValidateItemsTests(unittest.TestCase):
                     perturbation_type="paraphrase",
                 )
             ]
+        )
+
+        self.assertTrue(report.ok, report.to_dict())
+
+    def test_strict_perturbation_reference_check_reports_missing_id(self) -> None:
+        report = validate_items(
+            [
+                valid_safety(
+                    perturbation_of="missing-id",
+                    perturbation_type="paraphrase",
+                )
+            ],
+            check_perturbation_references=True,
         )
 
         self.assert_issue(report, "perturbation_of", "does not reference")

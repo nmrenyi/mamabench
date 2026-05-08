@@ -98,6 +98,31 @@ The command prints a manifest-style JSON summary with item counts by set type,
 source dataset, clinical domain, age group, task type, safety type,
 contamination risk, and split.
 
+## Adapt MedMCQA
+
+The MedMCQA adapter normalizes the already-filtered OBGYN/Pediatrics TSV from
+`obgyn-qa-collection` into mamabench JSONL:
+
+```bash
+python3 scripts/adapt_medmcqa.py \
+  /Users/renyi/Downloads/obgyn-qa-collection/medmcqa/data/obgyn_mcq.tsv \
+  data/processed/v0.1/medmcqa.jsonl \
+  --source-version obgyn-qa-collection@71433e4 \
+  --manifest-output data/processed/v0.1/medmcqa_manifest.json \
+  --validation-report-output data/processed/v0.1/medmcqa_validation_report.json
+```
+
+Adapter behavior:
+
+- `answer` is the normalized full correct answer text.
+- `answer_index` is derived from the source `correct_letter`.
+- `source_answer` preserves the source letter key.
+- `source_split`, `subject`, `topic`, `choice_type`, and explanations are
+  preserved in provenance.
+- all MedMCQA rows are tagged `contamination_risk: high`.
+- broad Pediatrics rows are retained; rows that are not clearly neonatal or
+  infant are labeled with `clinical_domain: unknown` and tagged `pediatrics`.
+
 ## Run tests
 
 ```bash

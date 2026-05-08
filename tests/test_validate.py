@@ -150,6 +150,25 @@ class ValidateItemsTests(unittest.TestCase):
 
         self.assert_issue(report, "perturbation_of", "does not reference")
 
+    def test_strict_perturbation_reference_check_accepts_known_id(self) -> None:
+        report = validate_items(
+            [
+                valid_safety(
+                    perturbation_of="external-id",
+                    perturbation_type="paraphrase",
+                )
+            ],
+            known_ids={"external-id"},
+            check_perturbation_references=True,
+        )
+
+        self.assertTrue(report.ok, report.to_dict())
+
+    def test_nullable_string_fields_reject_non_strings(self) -> None:
+        report = validate_items([valid_mcq(source_id=123)])
+
+        self.assert_issue(report, "source_id", "string or null")
+
     def test_unknown_controlled_value_is_reported(self) -> None:
         report = validate_items([valid_mcq(clinical_domain="cardiology")])
 
@@ -166,4 +185,3 @@ class ValidateItemsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -191,6 +191,9 @@ def _validate_item(item: Mapping[str, Any], line_number: int) -> list[Validation
         if field in item and not _is_nonblank_string(item.get(field)):
             issues.append(_issue(item, line_number, field, "must be a non-empty string"))
 
+    for field in ("source_id", "safety_type", "perturbation_of", "perturbation_type"):
+        _validate_nullable_string(item, line_number, field, issues)
+
     _validate_string_list(item, line_number, "tags", issues)
     _validate_string_list(item, line_number, "icd10_codes", issues)
     _validate_provenance(item, line_number, issues)
@@ -360,6 +363,19 @@ def _validate_string_list(
             )
 
 
+def _validate_nullable_string(
+    item: Mapping[str, Any],
+    line_number: int,
+    field: str,
+    issues: list[ValidationIssue],
+) -> None:
+    value = item.get(field)
+    if value is not None and not _is_nonblank_string(value):
+        issues.append(
+            _issue(item, line_number, field, "must be a non-empty string or null")
+        )
+
+
 def _validate_provenance(
     item: Mapping[str, Any], line_number: int, issues: list[ValidationIssue]
 ) -> None:
@@ -427,4 +443,3 @@ def _is_empty(value: Any) -> bool:
 
 def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
-

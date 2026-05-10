@@ -27,15 +27,26 @@ The repository currently includes:
 External datasets are not downloaded by this repository. Local processed outputs
 are regenerated from adapter scripts and ignored by Git.
 
+## Versioning
+
+This repository uses three separate versions:
+
+- Python package version: `0.1.0` in `pyproject.toml`. This versions the
+  mamabench code and CLI tools.
+- Schema version: `0.2` in `src/mamabench/schema.py`. This versions the JSONL
+  row shape and is copied into every benchmark row as `schema_version`.
+- Benchmark version: `v0.1`. This versions the dataset artifact release and is
+  used in generated row IDs and manifests.
+
+For example, a row can have ID `mamabench_v0.1_medmcqa_<source_id>` and
+`schema_version: "0.2"`. That means benchmark release `v0.1` uses schema `0.2`;
+it does not mean the Python package version is `0.2`.
+
 ## Schema
 
 The current in-use schema version is `0.2`. The code source of truth is
 `SCHEMA_VERSION` in `src/mamabench/schema.py`. A machine-readable copy of the
 current row shape is kept in `schemas/mamabench_v0.2.schema.json`.
-
-The current benchmark artifact release is `v0.1`. Benchmark version and schema
-version are separate: row IDs include the benchmark release, while each row's
-`schema_version` describes the JSON row shape.
 
 Each benchmark item is one JSON object per line.
 See [docs/schema.md](docs/schema.md) for the explanation and rationale for each

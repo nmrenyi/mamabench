@@ -2,7 +2,8 @@
 
 The current in-use schema version is `0.3`. The code source of truth is
 `SCHEMA_VERSION` in `src/mamabench/schema.py`. The machine-readable schema is
-`schemas/mamabench_v0.3.schema.json`.
+`schemas/mamabench_v0.3.schema.json`. That JSON Schema checks row structure
+only; full semantic validation is implemented by `scripts/validate_mamabench.py`.
 
 Each mamabench artifact is JSONL: one normalized benchmark item per line. Version
 `0.3` is intentionally minimal and currently supports MCQ rows only. Labels such
@@ -52,6 +53,10 @@ For MCQs, the validation invariant is:
 ```text
 answer == choices[answer_index]
 ```
+
+The Python validator also checks duplicate `id` values, duplicate
+`source.dataset` + `source.id` pairs, `answer_index` bounds, and unexpected
+fields. Use it for release validation rather than relying only on JSON Schema.
 
 ## Source Fields
 

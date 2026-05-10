@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.org/mamabench/schemas/mamabench_v0.3.schema.json",
   "title": "mamabench v0.3 item",
+  "$comment": "This JSON Schema checks row structure only. Use scripts/validate_mamabench.py for full mamabench semantic validation, including answer == choices[answer_index] and duplicate id checks.",
   "type": "object",
   "additionalProperties": false,
   "required": [

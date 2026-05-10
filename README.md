@@ -65,7 +65,9 @@ The current project pointer is tracked in `mamabench.json`:
 
 The current in-use schema version is `0.3`. The code source of truth is
 `SCHEMA_VERSION` in `src/mamabench/schema.py`. A machine-readable copy of the
-current row shape is kept in `schemas/mamabench_v0.3.schema.json`.
+current row shape is kept in `schemas/mamabench_v0.3.schema.json`. The JSON
+Schema is structural; the Python validator performs full mamabench semantic
+validation.
 
 Each benchmark item is one JSON object per line.
 See [schemas/mamabench_v0.3.md](schemas/mamabench_v0.3.md) for the explanation
@@ -94,7 +96,9 @@ python3 scripts/validate_mamabench.py \
 ```
 
 The command prints a JSON validation report and exits with status `0` when the
-file is valid.
+file is valid. It checks semantic invariants such as duplicate row IDs,
+duplicate source IDs, `answer_index` bounds, and
+`answer == choices[answer_index]`.
 
 ## Summarize generated data
 

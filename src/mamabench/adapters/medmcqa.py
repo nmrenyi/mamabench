@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import re
+import subprocess
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -14,11 +15,18 @@ from mamabench.schema import SCHEMA_VERSION
 MEDMCQA_SOURCE_DATASET = "MedMCQA"
 MEDMCQA_SOURCE_URL = "https://huggingface.co/datasets/openlifescienceai/medmcqa"
 MEDMCQA_LICENSE = "Apache-2.0"
-MEDMCQA_SOURCE_METADATA = {
-    MEDMCQA_SOURCE_DATASET: {
-        "url": MEDMCQA_SOURCE_URL,
-        "license": MEDMCQA_LICENSE,
-    }
+PREPARED_INPUT_REPOSITORY = "https://github.com/nmrenyi/obgyn-qa-collection"
+PREPARED_INPUT_REPO_NAME = "obgyn-qa-collection"
+PREPARED_INPUT_PATH = "medmcqa/data/obgyn_mcq.tsv"
+PREPARED_INPUT_METADATA: dict[str, Any] = {
+    "expected_repository": PREPARED_INPUT_REPOSITORY,
+    "expected_path": PREPARED_INPUT_PATH,
+    "description": (
+        "Pre-filtered OBGYN/Pediatrics MedMCQA subset used as mamabench "
+        "adapter input."
+    ),
+    "filtering_done_outside_mamabench": True,
+    "verified": False,
 }
 
 REQUIRED_COLUMNS = frozenset(
@@ -35,6 +43,23 @@ OPTION_MARKER_PATTERN = re.compile(r"(?:^|\s\|\s)([A-Z])\.\s*")
 
 class MedMCQAAdapterError(ValueError):
     """Raised when a MedMCQA row cannot be normalized."""
+
+
+def build_medmcqa_source_metadata(input_tsv: str | Path | None = None) -> dict[str, Any]:
+    """Build dataset-level MedMCQA provenance for the manifest."""
+
+    prepared_input = dict(PREPARED_INPUT_METADATA)
+    git_metadata = _prepared_input_git_metadata(input_tsv)
+    if git_metadata is not None:
+        prepared_input.update(git_metadata)
+
+    return {
+        MEDMCQA_SOURCE_DATASET: {
+            "url": MEDMCQA_SOURCE_URL,
+            "license": MEDMCQA_LICENSE,
+            "prepared_input": prepared_input,
+        }
+    }
 
 
 def load_medmcqa_tsv(
@@ -162,3 +187,51 @@ def _clean_option_text(value: str) -> str:
 def _benchmark_id(benchmark_version: str, source_id: str) -> str:
     version = normalize_benchmark_version(benchmark_version)
     return f"mamabench_{version}_medmcqa_{source_id}"
+
+
+def _prepared_input_git_metadata(input_tsv: str | Path | None) -> dict[str, Any] | None:
+    if input_tsv is None:
+        return None
+
+    input_path = Path(input_tsv).resolve()
+    git_directory = input_path.parent if input_path.is_file() else input_path
+
+    try:
+        repo_root = Path(
+            _git_output(git_directory, "rev-parse", "--show-toplevel")
+        ).resolve()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+    if repo_root.name != PREPARED_INPUT_REPO_NAME:
+        return None
+
+    try:
+        relative_path = input_path.relative_to(repo_root).as_posix()
+        if relative_path != PREPARED_INPUT_PATH:
+            return {"actual_path": relative_path}
+
+        commit = _git_output(repo_root, "rev-parse", "HEAD")
+        dirty = bool(_git_output(repo_root, "status", "--porcelain"))
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return None
+
+    return {
+        "repository": PREPARED_INPUT_REPOSITORY,
+        "path": relative_path,
+        "commit": commit,
+        "git_dirty": dirty,
+        "verified": True,
+    }
+
+
+def _git_output(cwd: Path, *args: str) -> str:
+    return subprocess.check_output(
+        ["git", *args],
+        cwd=cwd,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    ).strip()
+
+
+MEDMCQA_SOURCE_METADATA = build_medmcqa_source_metadata()

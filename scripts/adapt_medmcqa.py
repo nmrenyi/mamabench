@@ -12,8 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mamabench.adapters.medmcqa import (  # noqa: E402
-    MEDMCQA_SOURCE_METADATA,
     MedMCQAAdapterError,
+    build_medmcqa_source_metadata,
     load_medmcqa_tsv,
 )
 from mamabench.config import (  # noqa: E402
@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             rows,
             benchmark_version=benchmark_version,
             schema_version=config.schema_version,
-            source_dataset_metadata=MEDMCQA_SOURCE_METADATA,
+            source_dataset_metadata=build_medmcqa_source_metadata(args.input_tsv),
             validation_report=report,
         )
     except (OSError, MedMCQAAdapterError, ValueError) as exc:

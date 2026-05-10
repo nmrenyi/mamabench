@@ -36,11 +36,16 @@ This repository uses three separate versions:
 - Schema version: `0.2` in `src/mamabench/schema.py`. This versions the JSONL
   row shape and is copied into every benchmark row as `schema_version`.
 - Benchmark version: `v0.1`. This versions the dataset artifact release and is
-  used in generated row IDs and manifests.
+  used in generated row IDs, manifests, and processed artifact directories such
+  as `data/processed/benchmark-v0.1/`.
 
 For example, a row can have ID `mamabench_v0.1_medmcqa_<source_id>` and
 `schema_version: "0.2"`. That means benchmark release `v0.1` uses schema `0.2`;
 it does not mean the Python package version is `0.2`.
+
+Benchmark versions use a `v` prefix because they are release labels. Schema
+versions are stored without `v` because they are values inside JSON data and
+match the JSON Schema filename, for example `mamabench_v0.2.schema.json`.
 
 ## Schema
 
@@ -93,9 +98,9 @@ The MedMCQA adapter normalizes the already-filtered OBGYN/Pediatrics TSV from
 ```bash
 python3 scripts/adapt_medmcqa.py \
   /Users/renyi/Downloads/obgyn-qa-collection/medmcqa/data/obgyn_mcq.tsv \
-  data/processed/v0.1/medmcqa.jsonl \
-  --manifest-output data/processed/v0.1/medmcqa_manifest.json \
-  --validation-report-output data/processed/v0.1/medmcqa_validation_report.json
+  data/processed/benchmark-v0.1/medmcqa.jsonl \
+  --manifest-output data/processed/benchmark-v0.1/medmcqa_manifest.json \
+  --validation-report-output data/processed/benchmark-v0.1/medmcqa_validation_report.json
 ```
 
 Adapter behavior:

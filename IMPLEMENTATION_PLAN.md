@@ -178,7 +178,7 @@ python scripts/validate_mamabench.py data/samples/sample.jsonl
 Every processed version should include a manifest file:
 
 ```text
-data/processed/v0.1/manifest.json
+data/processed/benchmark-v0.1/manifest.json
 ```
 
 Manifest should include:
@@ -318,7 +318,7 @@ Keep model invocation and full RAG evaluation outside this repository unless the
 Target versioned output layout:
 
 ```text
-data/processed/v0.1/
+data/processed/benchmark-v0.1/
   mcq.jsonl
   open_ended.jsonl
   safety.jsonl

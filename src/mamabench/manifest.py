@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
+from mamabench.config import normalize_benchmark_version
 from mamabench.schema import SCHEMA_VERSION
 from mamabench.validate import ValidationReport
 
@@ -13,7 +14,7 @@ from mamabench.validate import ValidationReport
 def build_manifest(
     items: Iterable[Mapping[str, Any]],
     *,
-    benchmark_version: str = "v0.1",
+    benchmark_version: str,
     schema_version: str = SCHEMA_VERSION,
     source_dataset_metadata: Mapping[str, Mapping[str, Any]] | None = None,
     validation_report: ValidationReport | None = None,
@@ -25,7 +26,7 @@ def build_manifest(
     created = created_at or datetime.now(timezone.utc)
 
     return {
-        "benchmark_version": benchmark_version,
+        "benchmark_version": normalize_benchmark_version(benchmark_version),
         "schema_version": schema_version,
         "created_at": _format_timestamp(created),
         "total_item_count": len(rows),

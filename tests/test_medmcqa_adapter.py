@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,13 +18,14 @@ from mamabench.validate import validate_items
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "medmcqa_obgyn_sample.tsv"
+BENCHMARK_VERSION = "v0.1"
 
 
 class MedMCQAAdapterTests(unittest.TestCase):
     def test_load_fixture_emits_valid_rows(self) -> None:
         rows = load_medmcqa_tsv(
             FIXTURE,
-            benchmark_version="v0.1",
+            benchmark_version=BENCHMARK_VERSION,
         )
 
         report = validate_items(rows)
@@ -29,7 +34,7 @@ class MedMCQAAdapterTests(unittest.TestCase):
         self.assertEqual(len(rows), 4)
 
     def test_normalizes_answer_text_index_and_source_answer_key(self) -> None:
-        rows = load_medmcqa_tsv(FIXTURE)
+        rows = load_medmcqa_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)
         row = rows[1]
 
         self.assertEqual(row["source"]["answer"], "C")
@@ -41,7 +46,7 @@ class MedMCQAAdapterTests(unittest.TestCase):
         )
 
     def test_preserves_minimal_medmcqa_source(self) -> None:
-        row = load_medmcqa_tsv(FIXTURE)[1]
+        row = load_medmcqa_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)[1]
 
         self.assertEqual(row["schema_version"], "0.3")
         self.assertEqual(
@@ -54,7 +59,7 @@ class MedMCQAAdapterTests(unittest.TestCase):
         self.assertNotIn("url", row["source"])
 
     def test_does_not_emit_v0_1_label_fields(self) -> None:
-        row = load_medmcqa_tsv(FIXTURE)[1]
+        row = load_medmcqa_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)[1]
 
         self.assertNotIn("clinical_domain", row)
         self.assertNotIn("age_group", row)
@@ -63,9 +68,44 @@ class MedMCQAAdapterTests(unittest.TestCase):
         self.assertNotIn("provenance", row)
 
     def test_limit_caps_loaded_rows(self) -> None:
-        rows = load_medmcqa_tsv(FIXTURE, limit=2)
+        rows = load_medmcqa_tsv(
+            FIXTURE,
+            benchmark_version=BENCHMARK_VERSION,
+            limit=2,
+        )
 
         self.assertEqual(len(rows), 2)
+
+    def test_cli_normalizes_benchmark_version_in_rows_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_jsonl = Path(tmpdir) / "out.jsonl"
+            manifest_json = Path(tmpdir) / "manifest.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "adapt_medmcqa.py"),
+                    str(FIXTURE),
+                    str(output_jsonl),
+                    "--benchmark-version",
+                    "0.2",
+                    "--limit",
+                    "1",
+                    "--manifest-output",
+                    str(manifest_json),
+                ],
+                check=False,
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            row = json.loads(output_jsonl.read_text(encoding="utf-8"))
+            manifest = json.loads(manifest_json.read_text(encoding="utf-8"))
+            self.assertTrue(row["id"].startswith("mamabench_v0.2_medmcqa_"))
+            self.assertEqual(manifest["benchmark_version"], "v0.2")
 
     def test_parse_options_preserves_pipes_inside_option_text(self) -> None:
         options = parse_options(
@@ -94,7 +134,11 @@ class MedMCQAAdapterTests(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(MedMCQAAdapterError, "correct_letter"):
-            normalize_medmcqa_row(row, row_number=1)
+            normalize_medmcqa_row(
+                row,
+                row_number=1,
+                benchmark_version=BENCHMARK_VERSION,
+            )
 
 
 if __name__ == "__main__":

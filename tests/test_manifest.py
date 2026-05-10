@@ -27,6 +27,7 @@ class BuildManifestTests(unittest.TestCase):
 
         manifest = build_manifest(
             [row],
+            benchmark_version="v0.1",
             source_dataset_metadata={
                 "unit_test": {
                     "url": "https://example.test/unit",

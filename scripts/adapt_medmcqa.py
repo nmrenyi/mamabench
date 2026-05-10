@@ -16,6 +16,10 @@ from mamabench.adapters.medmcqa import (  # noqa: E402
     MedMCQAAdapterError,
     load_medmcqa_tsv,
 )
+from mamabench.config import (  # noqa: E402
+    load_project_config,
+    normalize_benchmark_version,
+)
 from mamabench.io import write_json, write_jsonl  # noqa: E402
 from mamabench.manifest import build_manifest  # noqa: E402
 from mamabench.validate import validate_items  # noqa: E402
@@ -27,8 +31,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("output_jsonl", help="Path for normalized mamabench JSONL.")
     parser.add_argument(
         "--benchmark-version",
-        default="v0.1",
-        help="Benchmark version used in generated item ids. Default: v0.1.",
+        default=None,
+        help=(
+            "Benchmark version used in generated item ids. "
+            "Default: benchmark_version from mamabench.json."
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -44,15 +51,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        config = load_project_config(ROOT / "mamabench.json")
+        benchmark_version = normalize_benchmark_version(
+            args.benchmark_version or config.benchmark_version
+        )
         rows = load_medmcqa_tsv(
             args.input_tsv,
-            benchmark_version=args.benchmark_version,
+            benchmark_version=benchmark_version,
             limit=args.limit,
         )
         report = validate_items(rows)
         manifest = build_manifest(
             rows,
-            benchmark_version=args.benchmark_version,
+            benchmark_version=benchmark_version,
+            schema_version=config.schema_version,
             source_dataset_metadata=MEDMCQA_SOURCE_METADATA,
             validation_report=report,
         )

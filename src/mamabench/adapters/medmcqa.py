@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
+from mamabench.config import normalize_benchmark_version
 from mamabench.schema import SCHEMA_VERSION
 
 
@@ -39,7 +40,7 @@ class MedMCQAAdapterError(ValueError):
 def load_medmcqa_tsv(
     path: str | Path,
     *,
-    benchmark_version: str = "v0.1",
+    benchmark_version: str,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Load a filtered MedMCQA TSV and normalize it to mamabench rows."""
@@ -76,7 +77,7 @@ def normalize_medmcqa_row(
     row: Mapping[str, str],
     *,
     row_number: int,
-    benchmark_version: str = "v0.1",
+    benchmark_version: str,
 ) -> dict[str, Any]:
     """Normalize one MedMCQA TSV row into the mamabench schema."""
 
@@ -156,9 +157,5 @@ def _clean_option_text(value: str) -> str:
 
 
 def _benchmark_id(benchmark_version: str, source_id: str) -> str:
-    version = (
-        benchmark_version
-        if benchmark_version.startswith("v")
-        else f"v{benchmark_version}"
-    )
+    version = normalize_benchmark_version(benchmark_version)
     return f"mamabench_{version}_medmcqa_{source_id}"

@@ -31,6 +31,17 @@ class MedMCQAAdapterTests(unittest.TestCase):
             input_tsv.write_text("id\tquestion\toptions_formatted\tcorrect_letter\n")
 
             subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
+            subprocess.run(
+                [
+                    "git",
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/nmrenyi/obgyn-qa-collection.git",
+                ],
+                cwd=repo,
+                check=True,
+            )
             subprocess.run(["git", "add", "."], cwd=repo, check=True)
             subprocess.run(
                 [
@@ -72,6 +83,95 @@ class MedMCQAAdapterTests(unittest.TestCase):
             self.assertEqual(prepared_input["commit"], commit)
             self.assertFalse(prepared_input["git_dirty"])
             self.assertTrue(prepared_input["verified"])
+
+    def test_source_metadata_does_not_verify_unexpected_remote(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "obgyn-qa-collection"
+            input_tsv = repo / "medmcqa" / "data" / "obgyn_mcq.tsv"
+            input_tsv.parent.mkdir(parents=True)
+            input_tsv.write_text("id\tquestion\toptions_formatted\tcorrect_letter\n")
+
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
+            subprocess.run(
+                [
+                    "git",
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/example/obgyn-qa-collection.git",
+                ],
+                cwd=repo,
+                check=True,
+            )
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=mamabench",
+                    "-c",
+                    "user.email=mamabench@example.test",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+            )
+
+            metadata = build_medmcqa_source_metadata(input_tsv)
+            prepared_input = metadata["MedMCQA"]["prepared_input"]
+
+            self.assertEqual(
+                prepared_input["expected_repository"],
+                "https://github.com/nmrenyi/obgyn-qa-collection",
+            )
+            self.assertEqual(
+                prepared_input["actual_repository"],
+                "https://github.com/example/obgyn-qa-collection.git",
+            )
+            self.assertEqual(prepared_input["actual_path"], "medmcqa/data/obgyn_mcq.tsv")
+            self.assertFalse(prepared_input["verified"])
+            self.assertNotIn("repository", prepared_input)
+            self.assertNotIn("path", prepared_input)
+            self.assertNotIn("commit", prepared_input)
+            self.assertNotIn("git_dirty", prepared_input)
+
+    def test_source_metadata_does_not_verify_missing_remote(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "obgyn-qa-collection"
+            input_tsv = repo / "medmcqa" / "data" / "obgyn_mcq.tsv"
+            input_tsv.parent.mkdir(parents=True)
+            input_tsv.write_text("id\tquestion\toptions_formatted\tcorrect_letter\n")
+
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=mamabench",
+                    "-c",
+                    "user.email=mamabench@example.test",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+            )
+
+            metadata = build_medmcqa_source_metadata(input_tsv)
+            prepared_input = metadata["MedMCQA"]["prepared_input"]
+
+            self.assertEqual(prepared_input["actual_path"], "medmcqa/data/obgyn_mcq.tsv")
+            self.assertFalse(prepared_input["verified"])
+            self.assertNotIn("repository", prepared_input)
+            self.assertNotIn("path", prepared_input)
+            self.assertNotIn("commit", prepared_input)
+            self.assertNotIn("git_dirty", prepared_input)
 
     def test_source_metadata_does_not_verify_noncanonical_repo_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

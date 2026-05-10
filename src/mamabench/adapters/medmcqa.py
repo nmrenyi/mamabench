@@ -16,7 +16,6 @@ MEDMCQA_SOURCE_DATASET = "MedMCQA"
 MEDMCQA_SOURCE_URL = "https://huggingface.co/datasets/openlifescienceai/medmcqa"
 MEDMCQA_LICENSE = "Apache-2.0"
 PREPARED_INPUT_REPOSITORY = "https://github.com/nmrenyi/obgyn-qa-collection"
-PREPARED_INPUT_REPO_NAME = "obgyn-qa-collection"
 PREPARED_INPUT_PATH = "medmcqa/data/obgyn_mcq.tsv"
 PREPARED_INPUT_METADATA: dict[str, Any] = {
     "expected_repository": PREPARED_INPUT_REPOSITORY,
@@ -203,13 +202,17 @@ def _prepared_input_git_metadata(input_tsv: str | Path | None) -> dict[str, Any]
     except (OSError, subprocess.CalledProcessError):
         return None
 
-    if repo_root.name != PREPARED_INPUT_REPO_NAME:
-        return None
-
     try:
         relative_path = input_path.relative_to(repo_root).as_posix()
         if relative_path != PREPARED_INPUT_PATH:
             return {"actual_path": relative_path}
+
+        try:
+            repository = _git_output(repo_root, "remote", "get-url", "origin")
+        except (OSError, subprocess.CalledProcessError):
+            return {"actual_path": relative_path}
+        if not _repositories_match(repository, PREPARED_INPUT_REPOSITORY):
+            return {"actual_path": relative_path, "actual_repository": repository}
 
         commit = _git_output(repo_root, "rev-parse", "HEAD")
         dirty = bool(_git_output(repo_root, "status", "--porcelain"))
@@ -223,6 +226,23 @@ def _prepared_input_git_metadata(input_tsv: str | Path | None) -> dict[str, Any]
         "git_dirty": dirty,
         "verified": True,
     }
+
+
+def _repositories_match(actual: str, expected: str) -> bool:
+    return _canonical_repository_url(actual) == _canonical_repository_url(expected)
+
+
+def _canonical_repository_url(value: str) -> str:
+    repository = value.strip().rstrip("/")
+    if repository.endswith(".git"):
+        repository = repository[: -len(".git")]
+    if repository.startswith("git@github.com:"):
+        repository = f"github.com/{repository.removeprefix('git@github.com:')}"
+    for prefix in ("https://", "http://"):
+        if repository.startswith(prefix):
+            repository = repository.removeprefix(prefix)
+            break
+    return repository.removeprefix("www.").rstrip("/")
 
 
 def _git_output(cwd: Path, *args: str) -> str:

@@ -133,8 +133,8 @@ Adapter behavior:
 - dataset-level source URL, license, and prepared-input provenance are written
   once in the manifest. For the local `obgyn-qa-collection` input repo, the
   manifest records the expected repository/path, and records the actual relative
-  TSV path and git commit when the input is verified as the canonical prepared
-  file.
+  TSV path and git commit only when the input is verified as the canonical
+  prepared file from the expected GitHub remote.
 
 The command writes local generated files under `benchmark/`, which is
 ignored by Git. Release-ready artifacts should be uploaded to Hugging Face

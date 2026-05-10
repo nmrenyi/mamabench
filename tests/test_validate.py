@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 from typing import Any
 
-from mamabench.io import read_jsonl
 from mamabench.validate import ValidationReport, validate_items
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def valid_mcq(**overrides: Any) -> dict[str, Any]:
@@ -41,9 +36,9 @@ def with_source(**overrides: Any) -> dict[str, Any]:
 
 
 class ValidateItemsTests(unittest.TestCase):
-    def test_sample_file_is_valid(self) -> None:
-        rows = read_jsonl(ROOT / "data" / "samples" / "sample.jsonl")
-        report = validate_items(rows)
+    def test_valid_mcq_is_valid(self) -> None:
+        report = validate_items([valid_mcq()])
+
         self.assertTrue(report.ok, report.to_dict())
         self.assertEqual(report.item_count, 1)
 

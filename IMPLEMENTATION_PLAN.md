@@ -170,7 +170,7 @@ Validation should catch:
 The validator should be usable both as a library function and a CLI:
 
 ```bash
-python scripts/validate_mamabench.py data/samples/sample.jsonl
+python scripts/validate_mamabench.py data/processed/benchmark-v0.1/medmcqa.jsonl
 ```
 
 ### Step 4: Add a Manifest Builder
@@ -178,7 +178,7 @@ python scripts/validate_mamabench.py data/samples/sample.jsonl
 Every processed version should include a manifest file:
 
 ```text
-data/processed/benchmark-v0.1/manifest.json
+data/processed/benchmark-v0.1/manifests/manifest.json
 ```
 
 Manifest should include:
@@ -323,8 +323,11 @@ data/processed/benchmark-v0.1/
   open_ended.jsonl
   safety.jsonl
   all.jsonl
-  manifest.json
-  validation_report.json
+  manifests/
+    manifest.json
+  validation-reports/
+    validation_report.json
+  inspection/
 ```
 
 `all.jsonl` should be a concatenation of the three sets, with unique IDs across all rows.
@@ -375,7 +378,7 @@ Start with Step 1 only:
 
 1. Create the Python package skeleton.
 2. Define the schema in `src/mamabench/schema.py`.
-3. Add tiny sample files under `data/samples/`.
+3. Add tiny test fixtures under `tests/fixtures/` when examples are needed.
 4. Implement `validate_mamabench.py`.
 5. Implement `summarize_mamabench.py`.
 6. Add unit tests for valid and invalid sample rows.

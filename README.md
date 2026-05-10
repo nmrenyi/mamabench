@@ -49,6 +49,20 @@ This repository does not track a separate Python package version. The Python
 code is treated as benchmark-building tooling in this repo, not as a published
 package release.
 
+The current project pointer is tracked in `configs/current.json`:
+
+```json
+{
+  "benchmark_version": "v0.1",
+  "schema_version": "0.2",
+  "schema_file": "schemas/mamabench_v0.2.schema.json",
+  "processed_dir": "data/processed/benchmark-v0.1",
+  "manifest_dir": "data/processed/benchmark-v0.1/manifests",
+  "validation_report_dir": "data/processed/benchmark-v0.1/validation-reports",
+  "inspection_dir": "data/processed/benchmark-v0.1/inspection"
+}
+```
+
 ## Schema
 
 The current in-use schema version is `0.2`. The code source of truth is
@@ -74,19 +88,21 @@ For MCQ rows, `answer` is the normalized full correct answer text and must equal
 `choices[answer_index]`. Source-native answer keys, such as `A` or `1`, are
 preserved as `source.answer` when available.
 
-## Validate sample data
+## Validate generated data
 
 ```bash
-python3 scripts/validate_mamabench.py data/samples/sample.jsonl
+python3 scripts/validate_mamabench.py \
+  data/processed/benchmark-v0.1/medmcqa.jsonl
 ```
 
 The command prints a JSON validation report and exits with status `0` when the
 file is valid.
 
-## Summarize sample data
+## Summarize generated data
 
 ```bash
-python3 scripts/summarize_mamabench.py data/samples/sample.jsonl
+python3 scripts/summarize_mamabench.py \
+  data/processed/benchmark-v0.1/medmcqa.jsonl
 ```
 
 The command prints a manifest-style JSON summary with item counts by set type,
@@ -101,8 +117,8 @@ The MedMCQA adapter normalizes the already-filtered OBGYN/Pediatrics TSV from
 python3 scripts/adapt_medmcqa.py \
   /Users/renyi/Downloads/obgyn-qa-collection/medmcqa/data/obgyn_mcq.tsv \
   data/processed/benchmark-v0.1/medmcqa.jsonl \
-  --manifest-output data/processed/benchmark-v0.1/medmcqa_manifest.json \
-  --validation-report-output data/processed/benchmark-v0.1/medmcqa_validation_report.json
+  --manifest-output data/processed/benchmark-v0.1/manifests/medmcqa_manifest.json \
+  --validation-report-output data/processed/benchmark-v0.1/validation-reports/medmcqa_validation_report.json
 ```
 
 Adapter behavior:
@@ -116,6 +132,21 @@ Adapter behavior:
 The command writes local generated files under `data/processed/`, which is
 ignored by Git. Release-ready artifacts should be uploaded to Hugging Face
 Datasets rather than committed to this repository.
+
+Generated files for the current MedMCQA artifact:
+
+- `data/processed/benchmark-v0.1/medmcqa.jsonl`: normalized benchmark rows; this
+  is the dataset artifact and stays directly under the benchmark release
+  directory.
+- `data/processed/benchmark-v0.1/manifests/medmcqa_manifest.json`: artifact
+  summary with benchmark version, schema version, source counts, licenses, and
+  validation status.
+- `data/processed/benchmark-v0.1/validation-reports/medmcqa_validation_report.json`:
+  validation result captured at generation time.
+
+Inspection-only exports, such as a pretty-printed first row, can live under
+`data/processed/benchmark-v0.1/inspection/`. They are not part of the release
+artifact.
 
 ## Run tests
 

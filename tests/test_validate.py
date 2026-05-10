@@ -13,64 +13,30 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def valid_mcq(**overrides: Any) -> dict[str, Any]:
     row: dict[str, Any] = {
-        "id": "mamabench_v0.1_mcq_test",
-        "schema_version": "0.1",
+        "id": "mamabench_v0.2_unit_test",
+        "schema_version": "0.2",
         "set_type": "mcq",
-        "source_dataset": "unit_test",
-        "source_id": "unit-mcq-001",
         "question": "What is the safest next action?",
-        "clinical_domain": "obgyn",
-        "age_group": "maternal",
-        "task_type": "triage",
-        "safety_type": None,
         "choices": ["Refer urgently.", "Wait.", "Ignore.", "Reassure only."],
         "answer": "Refer urgently.",
         "answer_index": 0,
-        "source_answer": "A",
-        "rubric": None,
-        "tags": ["pregnancy"],
-        "icd10_codes": ["O14"],
-        "perturbation_of": None,
-        "perturbation_type": None,
-        "contamination_risk": "low",
-        "license": "synthetic",
-        "provenance": {
-            "source_url": None,
-            "source_split": "pilot",
-            "source_version": "unit-v0.1",
+        "source": {
+            "dataset": "unit_test",
+            "id": "unit-mcq-001",
+            "url": "https://example.test/unit",
+            "license": "synthetic",
+            "answer": "A",
         },
-        "split": "pilot",
     }
     row.update(overrides)
     return row
 
 
-def valid_open_ended(**overrides: Any) -> dict[str, Any]:
-    row = valid_mcq(
-        id="mamabench_v0.1_open_test",
-        set_type="open_ended",
-        source_id="unit-open-001",
-        task_type="counseling",
-        choices=None,
-        answer=None,
-        answer_index=None,
-        source_answer=None,
-        rubric={"criteria": [{"name": "action", "points": 1}]},
-    )
-    row.update(overrides)
-    return row
-
-
-def valid_safety(**overrides: Any) -> dict[str, Any]:
-    row = valid_mcq(
-        id="mamabench_v0.1_safety_test",
-        set_type="safety",
-        source_id="unit-safety-001",
-        clinical_domain="general_maternal",
-        task_type="safety",
-        safety_type="equity",
-    )
-    row.update(overrides)
+def with_source(**overrides: Any) -> dict[str, Any]:
+    row = valid_mcq()
+    source = dict(row["source"])
+    source.update(overrides)
+    row["source"] = source
     return row
 
 
@@ -79,122 +45,117 @@ class ValidateItemsTests(unittest.TestCase):
         rows = read_jsonl(ROOT / "data" / "samples" / "sample.jsonl")
         report = validate_items(rows)
         self.assertTrue(report.ok, report.to_dict())
-        self.assertEqual(report.item_count, 4)
+        self.assertEqual(report.item_count, 1)
 
     def test_duplicate_ids_are_reported(self) -> None:
-        first = valid_mcq(id="duplicate", source_id="source-1")
-        second = valid_mcq(id="duplicate", source_id="source-2")
+        first = valid_mcq(
+            id="duplicate",
+            source=with_source(id="source-1")["source"],
+        )
+        second = valid_mcq(
+            id="duplicate",
+            source=with_source(id="source-2")["source"],
+        )
 
         report = validate_items([first, second])
 
         self.assert_issue(report, "id", "duplicate id")
 
     def test_duplicate_source_ids_are_reported(self) -> None:
-        first = valid_mcq(id="item-1", source_id="same-source")
-        second = valid_mcq(id="item-2", source_id="same-source")
+        first = valid_mcq(id="item-1")
+        second = valid_mcq(id="item-2")
 
         report = validate_items([first, second])
 
-        self.assert_issue(report, "source_id", "duplicate source_dataset + source_id")
+        self.assert_issue(
+            report, "source.id", "duplicate source.dataset + source.id"
+        )
+
+    def test_schema_version_must_match_current_version(self) -> None:
+        report = validate_items([valid_mcq(schema_version="0.1")])
+
+        self.assert_issue(report, "schema_version", "expected schema_version '0.2'")
+
+    def test_rejects_unexpected_v0_1_fields(self) -> None:
+        report = validate_items([valid_mcq(clinical_domain="obgyn")])
+
+        self.assert_issue(report, "clinical_domain", "unexpected canonical field")
+
+    def test_missing_canonical_field_is_reported(self) -> None:
+        row = valid_mcq()
+        del row["answer_index"]
+
+        report = validate_items([row])
+
+        self.assert_issue(report, "answer_index", "missing canonical field")
+
+    def test_unknown_set_type_is_reported(self) -> None:
+        report = validate_items([valid_mcq(set_type="open_ended")])
+
+        self.assert_issue(report, "set_type", "unknown value")
 
     def test_bad_mcq_answer_index_is_reported(self) -> None:
         report = validate_items([valid_mcq(answer_index=9)])
 
         self.assert_issue(report, "answer_index", "out of bounds")
 
+    def test_answer_index_must_be_integer(self) -> None:
+        report = validate_items([valid_mcq(answer_index=None)])
+
+        self.assert_issue(report, "answer_index", "must be an integer")
+
     def test_mcq_answer_must_match_choice_when_answer_index_is_set(self) -> None:
         report = validate_items([valid_mcq(answer="A", answer_index=0)])
 
         self.assert_issue(report, "answer", "does not match")
 
-    def test_source_answer_preserves_source_key(self) -> None:
-        report = validate_items([valid_mcq(source_answer="A")])
+    def test_choices_must_be_non_empty_strings(self) -> None:
+        report = validate_items([valid_mcq(choices=["Refer urgently.", ""])])
+
+        self.assert_issue(report, "choices", "choice at index 1")
+
+    def test_source_requires_minimal_audit_fields(self) -> None:
+        row = valid_mcq()
+        del row["source"]["license"]
+
+        report = validate_items([row])
+
+        self.assert_issue(report, "source", "missing source.license")
+
+    def test_source_id_can_be_null(self) -> None:
+        report = validate_items([with_source(id=None)])
 
         self.assertTrue(report.ok, report.to_dict())
 
-    def test_source_answer_allows_integer_keys(self) -> None:
-        report = validate_items([valid_mcq(source_answer=1)])
+    def test_source_id_rejects_empty_strings(self) -> None:
+        report = validate_items([with_source(id="")])
+
+        self.assert_issue(report, "source.id", "string or null")
+
+    def test_source_answer_field_preserves_source_key(self) -> None:
+        report = validate_items([with_source(answer="A")])
 
         self.assertTrue(report.ok, report.to_dict())
 
-    def test_source_answer_rejects_empty_strings(self) -> None:
-        report = validate_items([valid_mcq(source_answer="")])
-
-        self.assert_issue(report, "source_answer", "non-empty string")
-
-    def test_source_answer_rejects_bools(self) -> None:
-        report = validate_items([valid_mcq(source_answer=True)])
-
-        self.assert_issue(report, "source_answer", "integer")
-
-    def test_mcq_answer_must_match_choice_when_answer_index_is_missing(self) -> None:
-        report = validate_items([valid_mcq(answer="A", answer_index=None)])
-
-        self.assert_issue(report, "answer", "must appear in choices")
-
-    def test_open_ended_requires_rubric(self) -> None:
-        report = validate_items([valid_open_ended(rubric=None)])
-
-        self.assert_issue(report, "rubric", "require a rubric")
-
-    def test_safety_requires_safety_type(self) -> None:
-        report = validate_items([valid_safety(safety_type=None)])
-
-        self.assert_issue(report, "safety_type", "require safety_type")
-
-    def test_perturbation_requires_link_fields(self) -> None:
-        report = validate_items([valid_safety(perturbation_type="paraphrase")])
-
-        self.assert_issue(report, "perturbation_of", "required")
-
-    def test_perturbation_reference_can_point_outside_current_file(self) -> None:
-        report = validate_items(
-            [
-                valid_safety(
-                    perturbation_of="missing-id",
-                    perturbation_type="paraphrase",
-                )
-            ]
-        )
+    def test_source_answer_field_allows_integer_keys(self) -> None:
+        report = validate_items([with_source(answer=1)])
 
         self.assertTrue(report.ok, report.to_dict())
 
-    def test_strict_perturbation_reference_check_reports_missing_id(self) -> None:
-        report = validate_items(
-            [
-                valid_safety(
-                    perturbation_of="missing-id",
-                    perturbation_type="paraphrase",
-                )
-            ],
-            check_perturbation_references=True,
-        )
+    def test_source_answer_field_rejects_empty_strings(self) -> None:
+        report = validate_items([with_source(answer="")])
 
-        self.assert_issue(report, "perturbation_of", "does not reference")
+        self.assert_issue(report, "source.answer", "non-empty string")
 
-    def test_strict_perturbation_reference_check_accepts_known_id(self) -> None:
-        report = validate_items(
-            [
-                valid_safety(
-                    perturbation_of="external-id",
-                    perturbation_type="paraphrase",
-                )
-            ],
-            known_ids={"external-id"},
-            check_perturbation_references=True,
-        )
+    def test_source_answer_field_rejects_bools(self) -> None:
+        report = validate_items([with_source(answer=True)])
 
-        self.assertTrue(report.ok, report.to_dict())
+        self.assert_issue(report, "source.answer", "integer")
 
-    def test_nullable_string_fields_reject_non_strings(self) -> None:
-        report = validate_items([valid_mcq(source_id=123)])
+    def test_rejects_unexpected_source_fields(self) -> None:
+        report = validate_items([with_source(subject="Gynaecology & Obstetrics")])
 
-        self.assert_issue(report, "source_id", "string or null")
-
-    def test_unknown_controlled_value_is_reported(self) -> None:
-        report = validate_items([valid_mcq(clinical_domain="cardiology")])
-
-        self.assert_issue(report, "clinical_domain", "unknown value")
+        self.assert_issue(report, "source.subject", "unexpected source field")
 
     def assert_issue(
         self, report: ValidationReport, field: str, message_part: str

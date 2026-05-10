@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import re
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 from mamabench.schema import SCHEMA_VERSION
 
@@ -20,38 +20,10 @@ REQUIRED_COLUMNS = frozenset(
         "question",
         "options_formatted",
         "correct_letter",
-        "explanation",
-        "subject",
-        "topic",
-        "choice_type",
-        "split",
     }
 )
 
 OPTION_MARKER_PATTERN = re.compile(r"(?:^|\s\|\s)([A-Z])\.\s*")
-MATERNAL_KEYWORDS = frozenset(
-    {
-        "pregnan",
-        "gestation",
-        "fetal",
-        "fetus",
-        "obstetric",
-        "antenatal",
-        "prenatal",
-        "labor",
-        "labour",
-        "delivery",
-        "postpartum",
-        "preeclampsia",
-        "eclampsia",
-        "placenta",
-        "ectopic",
-    }
-)
-NEONATAL_KEYWORDS = frozenset(
-    {"neonate", "neonatal", "newborn", "birth asphyxia", "premature"}
-)
-INFANT_KEYWORDS = frozenset({"infant", "baby", "breastfeeding", "lactation"})
 
 
 class MedMCQAAdapterError(ValueError):
@@ -61,9 +33,7 @@ class MedMCQAAdapterError(ValueError):
 def load_medmcqa_tsv(
     path: str | Path,
     *,
-    benchmark_version: str = "v0.1",
-    benchmark_split: str = "test",
-    source_version: str | None = None,
+    benchmark_version: str = "v0.2",
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Load a filtered MedMCQA TSV and normalize it to mamabench rows."""
@@ -88,8 +58,6 @@ def load_medmcqa_tsv(
                     row,
                     row_number=row_number,
                     benchmark_version=benchmark_version,
-                    benchmark_split=benchmark_split,
-                    source_version=source_version,
                 )
             )
             if limit is not None and len(rows) >= limit:
@@ -102,9 +70,7 @@ def normalize_medmcqa_row(
     row: Mapping[str, str],
     *,
     row_number: int,
-    benchmark_version: str = "v0.1",
-    benchmark_split: str = "test",
-    source_version: str | None = None,
+    benchmark_version: str = "v0.2",
 ) -> dict[str, Any]:
     """Normalize one MedMCQA TSV row into the mamabench schema."""
 
@@ -123,49 +89,21 @@ def normalize_medmcqa_row(
     choices = list(choices_by_letter.values())
     answer_index = letters.index(correct_letter)
     answer = choices[answer_index]
-    subject = _clean_text(row.get("subject", ""))
-    topic = _clean_text(row.get("topic", ""))
-    choice_type = _clean_text(row.get("choice_type", ""))
-    source_split = _clean_text(row.get("split", ""))
-    explanation = _optional_text(row.get("explanation"))
-    clinical_domain, age_group = _classify_domain_and_age(
-        subject=subject,
-        topic=topic,
-        question=question,
-    )
-
     return {
         "id": _benchmark_id(benchmark_version, source_id),
         "schema_version": SCHEMA_VERSION,
         "set_type": "mcq",
-        "source_dataset": MEDMCQA_SOURCE_DATASET,
-        "source_id": source_id,
         "question": question,
-        "clinical_domain": clinical_domain,
-        "age_group": age_group,
-        "task_type": _classify_task_type(question, topic),
-        "safety_type": None,
         "choices": choices,
         "answer": answer,
         "answer_index": answer_index,
-        "source_answer": correct_letter,
-        "rubric": None,
-        "tags": _tags(subject=subject, topic=topic, choice_type=choice_type),
-        "icd10_codes": [],
-        "perturbation_of": None,
-        "perturbation_type": None,
-        "contamination_risk": "high",
-        "license": MEDMCQA_LICENSE,
-        "provenance": {
-            "source_url": MEDMCQA_SOURCE_URL,
-            "source_split": source_split or None,
-            "source_version": source_version,
-            "source_subject": subject or None,
-            "source_topic": topic or None,
-            "source_choice_type": choice_type or None,
-            "source_explanation": explanation,
+        "source": {
+            "dataset": MEDMCQA_SOURCE_DATASET,
+            "id": source_id,
+            "url": MEDMCQA_SOURCE_URL,
+            "license": MEDMCQA_LICENSE,
+            "answer": correct_letter,
         },
-        "split": benchmark_split,
     }
 
 
@@ -179,7 +117,11 @@ def parse_options(options_formatted: str, row_number: int) -> dict[str, str]:
     parsed: dict[str, str] = {}
     for index, match in enumerate(matches):
         letter = match.group(1)
-        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(options_formatted)
+        next_start = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(options_formatted)
+        )
         text = _clean_option_text(options_formatted[match.end() : next_start])
         if letter in parsed:
             raise MedMCQAAdapterError(
@@ -201,11 +143,6 @@ def _required_text(row: Mapping[str, str], field: str, row_number: int) -> str:
     return value
 
 
-def _optional_text(value: str | None) -> str | None:
-    cleaned = _clean_text(value or "")
-    return cleaned or None
-
-
 def _clean_text(value: str) -> str:
     return " ".join(str(value).replace("\\n", " ").split())
 
@@ -215,66 +152,9 @@ def _clean_option_text(value: str) -> str:
 
 
 def _benchmark_id(benchmark_version: str, source_id: str) -> str:
-    version = benchmark_version if benchmark_version.startswith("v") else f"v{benchmark_version}"
-    return f"mamabench_{version}_mcq_medmcqa_{source_id}"
-
-
-def _classify_domain_and_age(
-    *, subject: str, topic: str, question: str
-) -> tuple[str, str]:
-    text = f"{topic} {question}".lower()
-
-    if any(keyword in text for keyword in NEONATAL_KEYWORDS):
-        return "neonatal", "neonate"
-    if any(keyword in text for keyword in INFANT_KEYWORDS):
-        return "infant", "infant"
-
-    if subject == "Gynaecology & Obstetrics":
-        age_group = "maternal" if any(k in text for k in MATERNAL_KEYWORDS) else "adult"
-        return "obgyn", age_group
-
-    if subject == "Pediatrics":
-        return "pediatric", "child"
-
-    return "unknown", "unknown"
-
-
-def _classify_task_type(question: str, topic: str) -> str:
-    text = f"{question} {topic}".lower()
-    if "dose" in text or "dosage" in text:
-        return "dosage"
-    if any(word in text for word in ("treatment", "management", "drug", "therapy")):
-        return "treatment"
-    if any(word in text for word in ("diagnosis", "investigation", "marker", "cause")):
-        return "diagnosis"
-    if any(word in text for word in ("prevent", "prophylaxis", "contraceptive")):
-        return "prevention"
-    if any(word in text for word in ("emergency", "urgent", "refer")):
-        return "triage"
-    return "factual_lookup"
-
-
-def _tags(*, subject: str, topic: str, choice_type: str) -> list[str]:
-    tags = ["medmcqa"]
-    tags.extend(_tag_tokens(subject))
-    tags.extend(_tag_tokens(topic))
-    if choice_type:
-        tags.append(f"choice_type:{choice_type.lower()}")
-    return _dedupe(tags)
-
-
-def _tag_tokens(value: str) -> Iterable[str]:
-    cleaned = value.strip().lower()
-    if not cleaned:
-        return []
-    return [re.sub(r"[^a-z0-9]+", "_", cleaned).strip("_")]
-
-
-def _dedupe(values: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        if value and value not in seen:
-            seen.add(value)
-            result.append(value)
-    return result
+    version = (
+        benchmark_version
+        if benchmark_version.startswith("v")
+        else f"v{benchmark_version}"
+    )
+    return f"mamabench_{version}_medmcqa_{source_id}"

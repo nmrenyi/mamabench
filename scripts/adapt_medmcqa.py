@@ -26,19 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("output_jsonl", help="Path for normalized mamabench JSONL.")
     parser.add_argument(
         "--benchmark-version",
-        default="v0.1",
-        help="Benchmark version used in generated item ids. Default: v0.1.",
-    )
-    parser.add_argument(
-        "--benchmark-split",
-        choices=["dev", "test", "pilot"],
-        default="test",
-        help="mamabench split assigned to normalized rows. Default: test.",
-    )
-    parser.add_argument(
-        "--source-version",
-        default=None,
-        help="Source version string recorded in provenance.source_version.",
+        default="v0.2",
+        help="Benchmark version used in generated item ids. Default: v0.2.",
     )
     parser.add_argument(
         "--limit",
@@ -62,8 +51,6 @@ def main(argv: list[str] | None = None) -> int:
         rows = load_medmcqa_tsv(
             args.input_tsv,
             benchmark_version=args.benchmark_version,
-            benchmark_split=args.benchmark_split,
-            source_version=args.source_version,
             limit=args.limit,
         )
         report = validate_items(rows)
@@ -103,4 +90,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

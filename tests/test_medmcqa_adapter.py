@@ -20,8 +20,7 @@ class MedMCQAAdapterTests(unittest.TestCase):
     def test_load_fixture_emits_valid_rows(self) -> None:
         rows = load_medmcqa_tsv(
             FIXTURE,
-            benchmark_version="v0.1",
-            source_version="test-fixture",
+            benchmark_version="v0.2",
         )
 
         report = validate_items(rows)
@@ -29,11 +28,11 @@ class MedMCQAAdapterTests(unittest.TestCase):
         self.assertTrue(report.ok, report.to_dict())
         self.assertEqual(len(rows), 4)
 
-    def test_normalizes_answer_text_index_and_source_answer(self) -> None:
-        rows = load_medmcqa_tsv(FIXTURE, source_version="test-fixture")
+    def test_normalizes_answer_text_index_and_source_answer_key(self) -> None:
+        rows = load_medmcqa_tsv(FIXTURE)
         row = rows[1]
 
-        self.assertEqual(row["source_answer"], "C")
+        self.assertEqual(row["source"]["answer"], "C")
         self.assertEqual(row["answer_index"], 2)
         self.assertEqual(row["answer"], "Levonorgestrel")
         self.assertEqual(
@@ -41,31 +40,33 @@ class MedMCQAAdapterTests(unittest.TestCase):
             ["OCP", "Danazol", "Levonorgestrel", "Mifepristone"],
         )
 
-    def test_preserves_medmcqa_metadata(self) -> None:
-        row = load_medmcqa_tsv(FIXTURE, source_version="test-fixture")[1]
+    def test_preserves_minimal_medmcqa_source(self) -> None:
+        row = load_medmcqa_tsv(FIXTURE)[1]
 
-        self.assertEqual(row["source_dataset"], "MedMCQA")
-        self.assertEqual(row["source_id"], "0036cad0-d22f-453c-b075-322479d19d6e")
-        self.assertEqual(row["license"], "Apache-2.0")
-        self.assertEqual(row["contamination_risk"], "high")
-        self.assertEqual(row["provenance"]["source_split"], "train")
-        self.assertEqual(row["provenance"]["source_version"], "test-fixture")
-        self.assertEqual(row["provenance"]["source_topic"], "Contraceptives")
-        self.assertEqual(row["task_type"], "prevention")
-        self.assertIn("contraceptives", row["tags"])
+        self.assertEqual(row["schema_version"], "0.2")
+        self.assertEqual(
+            row["id"],
+            "mamabench_v0.2_medmcqa_0036cad0-d22f-453c-b075-322479d19d6e",
+        )
+        self.assertEqual(row["source"]["dataset"], "MedMCQA")
+        self.assertEqual(row["source"]["id"], "0036cad0-d22f-453c-b075-322479d19d6e")
+        self.assertEqual(row["source"]["license"], "Apache-2.0")
+        self.assertEqual(
+            row["source"]["url"],
+            "https://huggingface.co/datasets/openlifescienceai/medmcqa",
+        )
 
-    def test_classifies_obgyn_and_neonatal_rows(self) -> None:
-        rows = load_medmcqa_tsv(FIXTURE, source_version="test-fixture")
+    def test_does_not_emit_v0_1_label_fields(self) -> None:
+        row = load_medmcqa_tsv(FIXTURE)[1]
 
-        self.assertEqual(rows[0]["clinical_domain"], "obgyn")
-        self.assertEqual(rows[0]["age_group"], "adult")
-        self.assertEqual(rows[2]["clinical_domain"], "neonatal")
-        self.assertEqual(rows[2]["age_group"], "neonate")
-        self.assertEqual(rows[3]["clinical_domain"], "pediatric")
-        self.assertEqual(rows[3]["age_group"], "child")
+        self.assertNotIn("clinical_domain", row)
+        self.assertNotIn("age_group", row)
+        self.assertNotIn("task_type", row)
+        self.assertNotIn("tags", row)
+        self.assertNotIn("provenance", row)
 
     def test_limit_caps_loaded_rows(self) -> None:
-        rows = load_medmcqa_tsv(FIXTURE, source_version="test-fixture", limit=2)
+        rows = load_medmcqa_tsv(FIXTURE, limit=2)
 
         self.assertEqual(len(rows), 2)
 

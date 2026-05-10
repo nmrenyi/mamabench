@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mamabench.adapters.medmcqa import (  # noqa: E402
+    MEDMCQA_SOURCE_METADATA,
     MedMCQAAdapterError,
     load_medmcqa_tsv,
 )
@@ -52,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = build_manifest(
             rows,
             benchmark_version=args.benchmark_version,
+            source_dataset_metadata=MEDMCQA_SOURCE_METADATA,
             validation_report=report,
         )
     except (OSError, MedMCQAAdapterError, ValueError) as exc:

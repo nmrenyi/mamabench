@@ -1,8 +1,8 @@
 # mamabench Implementation Plan
 
 Note: this is the original implementation plan. The current in-use data schema is
-the minimal v0.2 schema documented in `docs/schema.md` and locked in
-`schemas/mamabench_v0.2.schema.json`.
+the minimal v0.3 schema documented in `docs/schema.md` and locked in
+`schemas/mamabench_v0.3.schema.json`.
 
 ## Project Context
 

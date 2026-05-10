@@ -1,7 +1,7 @@
 {
   "benchmark_version": "v0.1",
-  "schema_version": "0.2",
-  "schema_file": "schemas/mamabench_v0.2.schema.json",
+  "schema_version": "0.3",
+  "schema_file": "schemas/mamabench_v0.3.schema.json",
   "processed_dir": "data/processed/benchmark-v0.1",
   "manifest_dir": "data/processed/benchmark-v0.1/manifests",
   "inspection_dir": "data/processed/benchmark-v0.1/inspection"

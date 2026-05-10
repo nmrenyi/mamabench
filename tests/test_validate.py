@@ -9,7 +9,7 @@ from mamabench.validate import ValidationReport, validate_items
 def valid_mcq(**overrides: Any) -> dict[str, Any]:
     row: dict[str, Any] = {
         "id": "mamabench_v0.1_unit_test",
-        "schema_version": "0.2",
+        "schema_version": "0.3",
         "set_type": "mcq",
         "question": "What is the safest next action?",
         "choices": ["Refer urgently.", "Wait.", "Ignore.", "Reassure only."],
@@ -18,8 +18,6 @@ def valid_mcq(**overrides: Any) -> dict[str, Any]:
         "source": {
             "dataset": "unit_test",
             "id": "unit-mcq-001",
-            "url": "https://example.test/unit",
-            "license": "synthetic",
             "answer": "A",
         },
     }
@@ -69,7 +67,7 @@ class ValidateItemsTests(unittest.TestCase):
     def test_schema_version_must_match_current_version(self) -> None:
         report = validate_items([valid_mcq(schema_version="0.1")])
 
-        self.assert_issue(report, "schema_version", "expected schema_version '0.2'")
+        self.assert_issue(report, "schema_version", "expected schema_version '0.3'")
 
     def test_rejects_unexpected_v0_1_fields(self) -> None:
         report = validate_items([valid_mcq(clinical_domain="obgyn")])
@@ -111,11 +109,11 @@ class ValidateItemsTests(unittest.TestCase):
 
     def test_source_requires_minimal_audit_fields(self) -> None:
         row = valid_mcq()
-        del row["source"]["license"]
+        del row["source"]["dataset"]
 
         report = validate_items([row])
 
-        self.assert_issue(report, "source", "missing source.license")
+        self.assert_issue(report, "source", "missing source.dataset")
 
     def test_source_id_can_be_null(self) -> None:
         report = validate_items([with_source(id=None)])
@@ -151,6 +149,19 @@ class ValidateItemsTests(unittest.TestCase):
         report = validate_items([with_source(subject="Gynaecology & Obstetrics")])
 
         self.assert_issue(report, "source.subject", "unexpected source field")
+
+    def test_rejects_row_level_dataset_metadata(self) -> None:
+        report = validate_items(
+            [
+                with_source(
+                    url="https://example.test/unit",
+                    license="synthetic",
+                )
+            ]
+        )
+
+        self.assert_issue(report, "source.url", "unexpected source field")
+        self.assert_issue(report, "source.license", "unexpected source field")
 
     def assert_issue(
         self, report: ValidationReport, field: str, message_part: str

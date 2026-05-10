@@ -43,18 +43,15 @@ class MedMCQAAdapterTests(unittest.TestCase):
     def test_preserves_minimal_medmcqa_source(self) -> None:
         row = load_medmcqa_tsv(FIXTURE)[1]
 
-        self.assertEqual(row["schema_version"], "0.2")
+        self.assertEqual(row["schema_version"], "0.3")
         self.assertEqual(
             row["id"],
             "mamabench_v0.1_medmcqa_0036cad0-d22f-453c-b075-322479d19d6e",
         )
         self.assertEqual(row["source"]["dataset"], "MedMCQA")
         self.assertEqual(row["source"]["id"], "0036cad0-d22f-453c-b075-322479d19d6e")
-        self.assertEqual(row["source"]["license"], "Apache-2.0")
-        self.assertEqual(
-            row["source"]["url"],
-            "https://huggingface.co/datasets/openlifescienceai/medmcqa",
-        )
+        self.assertNotIn("license", row["source"])
+        self.assertNotIn("url", row["source"])
 
     def test_does_not_emit_v0_1_label_fields(self) -> None:
         row = load_medmcqa_tsv(FIXTURE)[1]

@@ -170,7 +170,7 @@ def _validate_source(
                 _issue(item, line_number, f"source.{field}", "unexpected source field")
             )
 
-    for field in ("dataset", "url", "license"):
+    for field in ("dataset",):
         if field in source and not _is_nonblank_string(source.get(field)):
             issues.append(
                 _issue(

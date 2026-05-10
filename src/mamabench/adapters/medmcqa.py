@@ -13,6 +13,12 @@ from mamabench.schema import SCHEMA_VERSION
 MEDMCQA_SOURCE_DATASET = "MedMCQA"
 MEDMCQA_SOURCE_URL = "https://huggingface.co/datasets/openlifescienceai/medmcqa"
 MEDMCQA_LICENSE = "Apache-2.0"
+MEDMCQA_SOURCE_METADATA = {
+    MEDMCQA_SOURCE_DATASET: {
+        "url": MEDMCQA_SOURCE_URL,
+        "license": MEDMCQA_LICENSE,
+    }
+}
 
 REQUIRED_COLUMNS = frozenset(
     {
@@ -100,8 +106,6 @@ def normalize_medmcqa_row(
         "source": {
             "dataset": MEDMCQA_SOURCE_DATASET,
             "id": source_id,
-            "url": MEDMCQA_SOURCE_URL,
-            "license": MEDMCQA_LICENSE,
             "answer": correct_letter,
         },
     }

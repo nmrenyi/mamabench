@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Final, TypedDict
 
 
-SCHEMA_VERSION: Final[str] = "0.2"
+SCHEMA_VERSION: Final[str] = "0.3"
 
 
 class Source(TypedDict, total=False):
@@ -13,8 +13,6 @@ class Source(TypedDict, total=False):
 
     dataset: str
     id: str | None
-    url: str
-    license: str
     answer: str | int | None
 
 
@@ -45,16 +43,12 @@ CANONICAL_FIELDS: Final[tuple[str, ...]] = (
 SOURCE_FIELDS: Final[tuple[str, ...]] = (
     "dataset",
     "id",
-    "url",
-    "license",
     "answer",
 )
 
 REQUIRED_SOURCE_FIELDS: Final[tuple[str, ...]] = (
     "dataset",
     "id",
-    "url",
-    "license",
 )
 
 CONTROLLED_VOCABULARIES: Final[dict[str, frozenset[str]]] = {

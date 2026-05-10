@@ -15,6 +15,7 @@ def build_manifest(
     *,
     benchmark_version: str = "v0.1",
     schema_version: str = SCHEMA_VERSION,
+    source_dataset_metadata: Mapping[str, Mapping[str, Any]] | None = None,
     validation_report: ValidationReport | None = None,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
@@ -30,7 +31,7 @@ def build_manifest(
         "total_item_count": len(rows),
         "counts_by_set_type": _counts(rows, "set_type"),
         "counts_by_source_dataset": _source_counts(rows, "dataset"),
-        "source_datasets": _source_dataset_notes(rows),
+        "source_datasets": _source_dataset_notes(rows, source_dataset_metadata),
         "validation": _validation_report(validation_report),
     }
 
@@ -42,20 +43,29 @@ def _counts(rows: list[Mapping[str, Any]], field: str) -> dict[str, int]:
     return dict(sorted(counter.items()))
 
 
-def _source_dataset_notes(rows: list[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    notes: dict[str, dict[str, set[str]]] = defaultdict(lambda: {"licenses": set()})
+def _source_dataset_notes(
+    rows: list[Mapping[str, Any]],
+    source_dataset_metadata: Mapping[str, Mapping[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    notes: dict[str, dict[str, Any]] = defaultdict(dict)
 
     for row in rows:
         source = row.get("source")
         source_dataset = _source_value(source, "dataset")
-        license_value = source.get("license") if isinstance(source, Mapping) else None
-        if isinstance(license_value, str) and license_value.strip():
-            notes[source_dataset]["licenses"].add(license_value)
+        notes[source_dataset]
+
+    for source_dataset, metadata in (source_dataset_metadata or {}).items():
+        if not isinstance(metadata, Mapping):
+            continue
+        note = notes[_counter_key(source_dataset)]
+        for key, value in metadata.items():
+            if isinstance(value, str):
+                note[key] = value.strip() or None
+            else:
+                note[key] = value
 
     return {
-        source_dataset: {
-            "licenses": sorted(values["licenses"]),
-        }
+        source_dataset: values
         for source_dataset, values in sorted(notes.items())
     }
 

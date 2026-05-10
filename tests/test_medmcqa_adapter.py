@@ -68,14 +68,6 @@ class MedMCQAAdapterTests(unittest.TestCase):
             prepared_input = metadata["MedMCQA"]["prepared_input"]
 
             self.assertEqual(
-                prepared_input["expected_repository"],
-                "https://github.com/nmrenyi/obgyn-qa-collection",
-            )
-            self.assertEqual(
-                prepared_input["expected_path"],
-                "medmcqa/data/obgyn_mcq.tsv",
-            )
-            self.assertEqual(
                 prepared_input["repository"],
                 "https://github.com/nmrenyi/obgyn-qa-collection",
             )
@@ -83,6 +75,8 @@ class MedMCQAAdapterTests(unittest.TestCase):
             self.assertEqual(prepared_input["commit"], commit)
             self.assertFalse(prepared_input["git_dirty"])
             self.assertTrue(prepared_input["verified"])
+            self.assertNotIn("expected", prepared_input)
+            self.assertNotIn("actual", prepared_input)
 
     def test_source_metadata_does_not_verify_unexpected_remote(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -124,14 +118,20 @@ class MedMCQAAdapterTests(unittest.TestCase):
             prepared_input = metadata["MedMCQA"]["prepared_input"]
 
             self.assertEqual(
-                prepared_input["expected_repository"],
+                prepared_input["expected"]["repository"],
                 "https://github.com/nmrenyi/obgyn-qa-collection",
             )
             self.assertEqual(
-                prepared_input["actual_repository"],
+                prepared_input["expected"]["path"],
+                "medmcqa/data/obgyn_mcq.tsv",
+            )
+            self.assertEqual(
+                prepared_input["actual"]["repository"],
                 "https://github.com/example/obgyn-qa-collection.git",
             )
-            self.assertEqual(prepared_input["actual_path"], "medmcqa/data/obgyn_mcq.tsv")
+            self.assertEqual(
+                prepared_input["actual"]["path"], "medmcqa/data/obgyn_mcq.tsv"
+            )
             self.assertFalse(prepared_input["verified"])
             self.assertNotIn("repository", prepared_input)
             self.assertNotIn("path", prepared_input)
@@ -166,8 +166,14 @@ class MedMCQAAdapterTests(unittest.TestCase):
             metadata = build_medmcqa_source_metadata(input_tsv)
             prepared_input = metadata["MedMCQA"]["prepared_input"]
 
-            self.assertEqual(prepared_input["actual_path"], "medmcqa/data/obgyn_mcq.tsv")
+            self.assertEqual(
+                prepared_input["expected"]["path"], "medmcqa/data/obgyn_mcq.tsv"
+            )
+            self.assertEqual(
+                prepared_input["actual"]["path"], "medmcqa/data/obgyn_mcq.tsv"
+            )
             self.assertFalse(prepared_input["verified"])
+            self.assertNotIn("repository", prepared_input["actual"])
             self.assertNotIn("repository", prepared_input)
             self.assertNotIn("path", prepared_input)
             self.assertNotIn("commit", prepared_input)
@@ -202,10 +208,10 @@ class MedMCQAAdapterTests(unittest.TestCase):
             prepared_input = metadata["MedMCQA"]["prepared_input"]
 
             self.assertEqual(
-                prepared_input["expected_path"],
+                prepared_input["expected"]["path"],
                 "medmcqa/data/obgyn_mcq.tsv",
             )
-            self.assertEqual(prepared_input["actual_path"], "other/source.tsv")
+            self.assertEqual(prepared_input["actual"]["path"], "other/source.tsv")
             self.assertFalse(prepared_input["verified"])
             self.assertNotIn("path", prepared_input)
             self.assertNotIn("commit", prepared_input)
@@ -220,10 +226,11 @@ class MedMCQAAdapterTests(unittest.TestCase):
             prepared_input = metadata["MedMCQA"]["prepared_input"]
 
             self.assertEqual(
-                prepared_input["expected_path"],
+                prepared_input["expected"]["path"],
                 "medmcqa/data/obgyn_mcq.tsv",
             )
             self.assertFalse(prepared_input["verified"])
+            self.assertNotIn("actual", prepared_input)
             self.assertNotIn("path", prepared_input)
             self.assertNotIn("commit", prepared_input)
             self.assertNotIn("git_dirty", prepared_input)

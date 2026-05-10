@@ -17,15 +17,16 @@ MEDMCQA_SOURCE_URL = "https://huggingface.co/datasets/openlifescienceai/medmcqa"
 MEDMCQA_LICENSE = "Apache-2.0"
 PREPARED_INPUT_REPOSITORY = "https://github.com/nmrenyi/obgyn-qa-collection"
 PREPARED_INPUT_PATH = "medmcqa/data/obgyn_mcq.tsv"
-PREPARED_INPUT_METADATA: dict[str, Any] = {
-    "expected_repository": PREPARED_INPUT_REPOSITORY,
-    "expected_path": PREPARED_INPUT_PATH,
+PREPARED_INPUT_EXPECTED: dict[str, Any] = {
+    "repository": PREPARED_INPUT_REPOSITORY,
+    "path": PREPARED_INPUT_PATH,
+}
+PREPARED_INPUT_BASE_METADATA: dict[str, Any] = {
     "description": (
         "Pre-filtered OBGYN/Pediatrics MedMCQA subset used as mamabench "
         "adapter input."
     ),
     "filtering_done_outside_mamabench": True,
-    "verified": False,
 }
 
 REQUIRED_COLUMNS = frozenset(
@@ -47,16 +48,11 @@ class MedMCQAAdapterError(ValueError):
 def build_medmcqa_source_metadata(input_tsv: str | Path | None = None) -> dict[str, Any]:
     """Build dataset-level MedMCQA provenance for the manifest."""
 
-    prepared_input = dict(PREPARED_INPUT_METADATA)
-    git_metadata = _prepared_input_git_metadata(input_tsv)
-    if git_metadata is not None:
-        prepared_input.update(git_metadata)
-
     return {
         MEDMCQA_SOURCE_DATASET: {
             "url": MEDMCQA_SOURCE_URL,
             "license": MEDMCQA_LICENSE,
-            "prepared_input": prepared_input,
+            "prepared_input": _prepared_input_metadata(input_tsv),
         }
     }
 
@@ -188,6 +184,16 @@ def _benchmark_id(benchmark_version: str, source_id: str) -> str:
     return f"mamabench_{version}_medmcqa_{source_id}"
 
 
+def _prepared_input_metadata(input_tsv: str | Path | None) -> dict[str, Any]:
+    git_metadata = _prepared_input_git_metadata(input_tsv)
+    if git_metadata is None:
+        git_metadata = {
+            "expected": dict(PREPARED_INPUT_EXPECTED),
+            "verified": False,
+        }
+    return {**PREPARED_INPUT_BASE_METADATA, **git_metadata}
+
+
 def _prepared_input_git_metadata(input_tsv: str | Path | None) -> dict[str, Any] | None:
     if input_tsv is None:
         return None
@@ -204,15 +210,17 @@ def _prepared_input_git_metadata(input_tsv: str | Path | None) -> dict[str, Any]
 
     try:
         relative_path = input_path.relative_to(repo_root).as_posix()
-        if relative_path != PREPARED_INPUT_PATH:
-            return {"actual_path": relative_path}
-
         try:
             repository = _git_output(repo_root, "remote", "get-url", "origin")
         except (OSError, subprocess.CalledProcessError):
-            return {"actual_path": relative_path}
-        if not _repositories_match(repository, PREPARED_INPUT_REPOSITORY):
-            return {"actual_path": relative_path, "actual_repository": repository}
+            return _unverified_prepared_input(actual={"path": relative_path})
+        if (
+            relative_path != PREPARED_INPUT_PATH
+            or not _repositories_match(repository, PREPARED_INPUT_REPOSITORY)
+        ):
+            return _unverified_prepared_input(
+                actual={"repository": repository, "path": relative_path}
+            )
 
         commit = _git_output(repo_root, "rev-parse", "HEAD")
         dirty = bool(_git_output(repo_root, "status", "--porcelain"))
@@ -225,6 +233,14 @@ def _prepared_input_git_metadata(input_tsv: str | Path | None) -> dict[str, Any]
         "commit": commit,
         "git_dirty": dirty,
         "verified": True,
+    }
+
+
+def _unverified_prepared_input(*, actual: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "expected": dict(PREPARED_INPUT_EXPECTED),
+        "actual": {key: value for key, value in actual.items() if value},
+        "verified": False,
     }
 
 

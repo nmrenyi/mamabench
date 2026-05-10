@@ -29,10 +29,8 @@ are regenerated from adapter scripts and ignored by Git.
 
 ## Versioning
 
-This repository uses three separate versions:
+This repository tracks two data versions:
 
-- Python package version: `0.1.0` in `pyproject.toml`. This versions the
-  mamabench code and CLI tools.
 - Schema version: `0.2` in `src/mamabench/schema.py`. This versions the JSONL
   row shape and is copied into every benchmark row as `schema_version`.
 - Benchmark version: `v0.1`. This versions the dataset artifact release and is
@@ -41,11 +39,15 @@ This repository uses three separate versions:
 
 For example, a row can have ID `mamabench_v0.1_medmcqa_<source_id>` and
 `schema_version: "0.2"`. That means benchmark release `v0.1` uses schema `0.2`;
-it does not mean the Python package version is `0.2`.
+these are the only versions that affect benchmark artifacts.
 
 Benchmark versions use a `v` prefix because they are release labels. Schema
 versions are stored without `v` because they are values inside JSON data and
 match the JSON Schema filename, for example `mamabench_v0.2.schema.json`.
+
+This repository does not track a separate Python package version. The Python
+code is treated as benchmark-building tooling in this repo, not as a published
+package release.
 
 ## Schema
 

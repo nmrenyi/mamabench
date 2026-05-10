@@ -31,7 +31,7 @@ def build_manifest(
         "counts_by_set_type": _counts(rows, "set_type"),
         "counts_by_source_dataset": _source_counts(rows, "dataset"),
         "source_datasets": _source_dataset_notes(rows),
-        "validation": _validation_summary(validation_report),
+        "validation": _validation_report(validation_report),
     }
 
 
@@ -73,10 +73,10 @@ def _source_value(source: Any, field: str) -> str:
     return _counter_key(source.get(field))
 
 
-def _validation_summary(report: ValidationReport | None) -> dict[str, Any]:
+def _validation_report(report: ValidationReport | None) -> dict[str, Any]:
     if report is None:
-        return {"ok": None, "error_count": None}
-    return {"ok": report.ok, "error_count": report.error_count}
+        return {"ok": None, "item_count": None, "error_count": None, "issues": []}
+    return report.to_dict()
 
 
 def _counter_key(value: Any) -> str:

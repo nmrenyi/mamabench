@@ -40,11 +40,6 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional path to write a manifest JSON summary.",
     )
-    parser.add_argument(
-        "--validation-report-output",
-        default=None,
-        help="Optional path to write a validation report JSON.",
-    )
     args = parser.parse_args(argv)
 
     try:
@@ -63,8 +58,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    if args.validation_report_output:
-        write_json(args.validation_report_output, report.to_dict())
     if args.manifest_output:
         write_json(args.manifest_output, manifest)
 

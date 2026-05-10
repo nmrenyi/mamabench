@@ -58,7 +58,6 @@ The current project pointer is tracked in `configs/current.json`:
   "schema_file": "schemas/mamabench_v0.2.schema.json",
   "processed_dir": "data/processed/benchmark-v0.1",
   "manifest_dir": "data/processed/benchmark-v0.1/manifests",
-  "validation_report_dir": "data/processed/benchmark-v0.1/validation-reports",
   "inspection_dir": "data/processed/benchmark-v0.1/inspection"
 }
 ```
@@ -117,8 +116,7 @@ The MedMCQA adapter normalizes the already-filtered OBGYN/Pediatrics TSV from
 python3 scripts/adapt_medmcqa.py \
   /Users/renyi/Downloads/obgyn-qa-collection/medmcqa/data/obgyn_mcq.tsv \
   data/processed/benchmark-v0.1/medmcqa.jsonl \
-  --manifest-output data/processed/benchmark-v0.1/manifests/medmcqa_manifest.json \
-  --validation-report-output data/processed/benchmark-v0.1/validation-reports/medmcqa_validation_report.json
+  --manifest-output data/processed/benchmark-v0.1/manifests/medmcqa_manifest.json
 ```
 
 Adapter behavior:
@@ -140,9 +138,7 @@ Generated files for the current MedMCQA artifact:
   directory.
 - `data/processed/benchmark-v0.1/manifests/medmcqa_manifest.json`: artifact
   summary with benchmark version, schema version, source counts, licenses, and
-  validation status.
-- `data/processed/benchmark-v0.1/validation-reports/medmcqa_validation_report.json`:
-  validation result captured at generation time.
+  the full validation report, including any issues.
 
 Inspection-only exports, such as a pretty-printed first row, can live under
 `data/processed/benchmark-v0.1/inspection/`. They are not part of the release

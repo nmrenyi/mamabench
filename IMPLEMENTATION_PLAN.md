@@ -325,8 +325,6 @@ data/processed/benchmark-v0.1/
   all.jsonl
   manifests/
     manifest.json
-  validation-reports/
-    validation_report.json
   inspection/
 ```
 

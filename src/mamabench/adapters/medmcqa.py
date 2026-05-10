@@ -45,6 +45,9 @@ def load_medmcqa_tsv(
 ) -> list[dict[str, Any]]:
     """Load a filtered MedMCQA TSV and normalize it to mamabench rows."""
 
+    if limit is not None and limit < 0:
+        raise MedMCQAAdapterError("limit must be non-negative")
+
     tsv_path = Path(path)
     rows: list[dict[str, Any]] = []
 
@@ -60,6 +63,9 @@ def load_medmcqa_tsv(
             )
 
         for row_number, row in enumerate(reader, start=1):
+            if limit is not None and len(rows) >= limit:
+                break
+
             rows.append(
                 normalize_medmcqa_row(
                     row,
@@ -67,9 +73,6 @@ def load_medmcqa_tsv(
                     benchmark_version=benchmark_version,
                 )
             )
-            if limit is not None and len(rows) >= limit:
-                break
-
     return rows
 
 

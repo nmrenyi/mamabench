@@ -76,6 +76,53 @@ class MedMCQAAdapterTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 2)
 
+    def test_limit_zero_returns_no_rows(self) -> None:
+        rows = load_medmcqa_tsv(
+            FIXTURE,
+            benchmark_version=BENCHMARK_VERSION,
+            limit=0,
+        )
+
+        self.assertEqual(rows, [])
+
+    def test_negative_limit_fails(self) -> None:
+        with self.assertRaisesRegex(MedMCQAAdapterError, "limit must be non-negative"):
+            load_medmcqa_tsv(
+                FIXTURE,
+                benchmark_version=BENCHMARK_VERSION,
+                limit=-1,
+            )
+
+    def test_cli_limit_zero_writes_empty_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_jsonl = Path(tmpdir) / "out.jsonl"
+            manifest_json = Path(tmpdir) / "manifest.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "adapt_medmcqa.py"),
+                    str(FIXTURE),
+                    str(output_jsonl),
+                    "--limit",
+                    "0",
+                    "--manifest-output",
+                    str(manifest_json),
+                ],
+                check=False,
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output_jsonl.read_text(encoding="utf-8"), "")
+            manifest = json.loads(manifest_json.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["benchmark_version"], BENCHMARK_VERSION)
+            self.assertEqual(manifest["total_item_count"], 0)
+            self.assertTrue(manifest["validation"]["ok"])
+
     def test_cli_normalizes_benchmark_version_in_rows_and_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_jsonl = Path(tmpdir) / "out.jsonl"

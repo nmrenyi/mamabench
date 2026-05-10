@@ -1,0 +1,8 @@
+{
+  "benchmark_version": "v0.1",
+  "schema_version": "0.3",
+  "schema_file": "schemas/mamabench_v0.3.schema.json",
+  "benchmark_dir": "benchmark/v0.1",
+  "manifest_dir": "benchmark/v0.1/manifests",
+  "inspection_dir": "benchmark/v0.1/inspection"
+}

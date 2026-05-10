@@ -1,7 +1,7 @@
 # mamabench Implementation Plan
 
 Note: this is the original implementation plan. The current in-use data schema is
-the minimal v0.3 schema documented in `docs/schema.md` and locked in
+the minimal v0.3 schema documented in `schemas/mamabench_v0.3.md` and locked in
 `schemas/mamabench_v0.3.schema.json`.
 
 ## Project Context
@@ -58,7 +58,8 @@ Implement this repository incrementally. Do not try to ingest every source at on
 
 ### Step 1: Minimal Repository Skeleton
 
-Create a small Python package with validation and sample data only.
+Create a small Python package with schema documentation, validation, source
+adapters, and tests. Keep generated benchmark artifacts ignored by Git.
 
 Recommended structure:
 
@@ -67,13 +68,12 @@ mamabench/
   README.md
   pyproject.toml
   IMPLEMENTATION_PLAN.md
-  configs/
-    mamabench_v0.1.yaml
-  data/
-    raw/
-    processed/
-    samples/
+  mamabench.json
+  schemas/
+    mamabench_v0.3.schema.json
+    mamabench_v0.3.md
   scripts/
+    adapt_medmcqa.py
     validate_mamabench.py
     summarize_mamabench.py
   src/
@@ -84,15 +84,18 @@ mamabench/
       manifest.py
       io.py
   tests/
-    test_schema.py
+    fixtures/
     test_validate.py
+    test_manifest.py
+    test_medmcqa_adapter.py
+  benchmark/
+    v0.1/   # generated locally and ignored by Git
 ```
 
 First milestone:
 
-- define the canonical schema
-- add 3-5 hand-written sample rows covering MCQ, open-ended, and safety items
-- validate those rows
+- define the minimal canonical MCQ schema
+- validate source-adapter fixture rows
 - produce a simple manifest summary
 
 Do not download external datasets during Step 1.
@@ -101,53 +104,35 @@ Do not download external datasets during Step 1.
 
 Use JSONL as the normalized benchmark format. Each line should represent one benchmark item.
 
-Recommended common fields:
+Current v0.3 common fields:
 
 ```json
 {
-  "id": "mamabench_v0.1_mcq_000001",
-  "schema_version": "0.1",
+  "id": "mamabench_v0.1_medmcqa_000001",
+  "schema_version": "0.3",
   "set_type": "mcq",
-  "source_dataset": "MedMCQA",
-  "source_id": "original-source-id-if-available",
   "question": "Question text",
-  "clinical_domain": "obgyn",
-  "age_group": "maternal",
-  "task_type": "treatment",
-  "safety_type": null,
-  "choices": ["A", "B", "C", "D"],
-  "answer": "A",
+  "choices": ["Choice A", "Choice B", "Choice C", "Choice D"],
+  "answer": "Choice A",
   "answer_index": 0,
-  "rubric": null,
-  "tags": ["pregnancy", "postpartum"],
-  "icd10_codes": [],
-  "perturbation_of": null,
-  "perturbation_type": null,
-  "contamination_risk": "high",
-  "license": "unknown",
-  "provenance": {
-    "source_url": null,
-    "source_split": null,
-    "source_version": null
-  },
-  "split": "test"
+  "source": {
+    "dataset": "MedMCQA",
+    "id": "original-source-id-if-available",
+    "answer": "A"
+  }
 }
 ```
 
-Required fields should vary by `set_type`:
+The current schema intentionally supports only MCQ rows. For MCQ rows:
 
-- `mcq`: requires `choices`, `answer`, and either `answer_index` or a validated mapping from answer to choices
-- `open_ended`: requires `question` and `rubric`; choices should be null or empty
-- `safety`: requires `safety_type`; if generated from a perturbation, requires `perturbation_of` and `perturbation_type`
+- `answer` is the normalized full correct choice text
+- `answer_index` is required and must point to that choice
+- `source.answer` preserves the source-native answer key when available
+- dataset-level metadata such as source URL and license belongs in the manifest,
+  not repeated in every row
 
-Recommended controlled values:
-
-- `set_type`: `mcq`, `open_ended`, `safety`
-- `clinical_domain`: `obgyn`, `neonatal`, `infant`, `reproductive`, `general_maternal`, `unknown`
-- `age_group`: `maternal`, `neonate`, `infant`, `adult`, `unknown`
-- `task_type`: `diagnosis`, `treatment`, `triage`, `dosage`, `procedure`, `prevention`, `counseling`, `case_reasoning`, `factual_lookup`, `safety`, `unknown`
-- `contamination_risk`: `high`, `medium`, `low`, `unknown`
-- `split`: `dev`, `test`, `pilot`
+Open-ended, safety, domain labels, task labels, and split fields should be added
+only in a future schema version when a real source and scoring path need them.
 
 ### Step 3: Implement Validation Before Ingestion
 
@@ -155,22 +140,22 @@ Build validation utilities before source adapters.
 
 Validation should catch:
 
-- missing required fields
+- missing required v0.3 fields
+- unexpected top-level or `source` fields
 - duplicate `id`
-- duplicate source items if `source_dataset` + `source_id` repeats
+- duplicate source items if `source.dataset` + `source.id` repeats
 - malformed MCQ choice lists
 - `answer_index` out of bounds
-- answer not present in choices when applicable
-- missing HealthBench rubric on open-ended rows
-- missing `safety_type` on safety rows
-- perturbation rows without `perturbation_of`
-- unknown controlled-vocabulary values
-- invalid split names
+- `answer` not equal to `choices[answer_index]`
+- malformed `source.answer` values
+
+Future schema versions should add validation for open-ended rubrics, safety
+metadata, perturbation links, and controlled labels when those fields exist.
 
 The validator should be usable both as a library function and a CLI:
 
 ```bash
-python scripts/validate_mamabench.py data/processed/benchmark-v0.1/medmcqa.jsonl
+python scripts/validate_mamabench.py benchmark/v0.1/medmcqa.jsonl
 ```
 
 ### Step 4: Add a Manifest Builder
@@ -178,7 +163,7 @@ python scripts/validate_mamabench.py data/processed/benchmark-v0.1/medmcqa.jsonl
 Every processed version should include a manifest file:
 
 ```text
-data/processed/benchmark-v0.1/manifests/manifest.json
+benchmark/v0.1/manifests/manifest.json
 ```
 
 Manifest should include:
@@ -188,15 +173,9 @@ Manifest should include:
 - created timestamp
 - total item count
 - counts by `set_type`
-- counts by `source_dataset`
-- counts by `clinical_domain`
-- counts by `age_group`
-- counts by `task_type`
-- counts by `safety_type`
-- counts by contamination risk
-- split counts
-- source dataset versions / license notes where known
-- validation status
+- counts by source dataset
+- source dataset URL / license notes where known
+- full validation report, including issues if any
 
 ### Step 5: Implement One MCQ Source Adapter
 
@@ -215,9 +194,8 @@ Adapter requirements:
 - preserve original source ID
 - preserve original answer key
 - normalize options into `choices`
-- add source-specific provenance
-- add filtering metadata and clinical tags
-- tag contamination risk
+- keep row-level source metadata inside the minimal `source` object
+- write dataset-level source URL and license into the manifest
 
 ### Step 6: Add Filtering and Tagging
 
@@ -318,21 +296,19 @@ Keep model invocation and full RAG evaluation outside this repository unless the
 Target versioned output layout:
 
 ```text
-data/processed/benchmark-v0.1/
-  mcq.jsonl
-  open_ended.jsonl
-  safety.jsonl
-  all.jsonl
+benchmark/v0.1/
+  medmcqa.jsonl
   manifests/
-    manifest.json
+    medmcqa_manifest.json
   inspection/
 ```
 
-`all.jsonl` should be a concatenation of the three sets, with unique IDs across all rows.
+Additional source files can be added directly under the benchmark release
+directory as they are implemented.
 
 ## Reporting Requirements to Preserve
 
-The processed benchmark should support reports broken down by:
+The processed benchmark should eventually support reports broken down by:
 
 - MCQ vs open-ended vs safety
 - OBGYN vs neonatal vs reproductive health
@@ -350,7 +326,10 @@ Metrics expected by the broader MAMAI evaluation:
 
 ## Contamination Caveat
 
-MedMCQA, MedQA, and MMLU are likely present in many model pretraining corpora. Rows from those sources should be tagged with `contamination_risk: high`.
+MedMCQA, MedQA, and MMLU are likely present in many model pretraining corpora.
+The current v0.3 schema does not store row-level contamination labels. Record
+dataset-level contamination caveats in documentation or manifests for now, and
+add a row-level field in a future schema version only if scoring uses it.
 
 To support contamination-adjusted reporting:
 

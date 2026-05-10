@@ -8,7 +8,7 @@ This repository is scoped to benchmark construction, validation, and lightweight
 summaries. It does not implement production retrieval, retrieval-label generation,
 model serving, or full model evaluation.
 
-Generated benchmark artifacts under `data/processed/` are not tracked in Git.
+Generated benchmark artifacts under `benchmark/` are not tracked in Git.
 They should be regenerated from adapter scripts during development and published
 as versioned dataset releases on Hugging Face Datasets when stable.
 
@@ -20,7 +20,6 @@ The repository currently includes:
 - validation utilities
 - manifest/summarization utilities
 - CLI wrappers for validation and summarization
-- a tiny synthetic MCQ sample file
 - a MedMCQA adapter for the filtered OBGYN/Pediatrics source file
 - unit tests for valid and invalid rows
 
@@ -35,7 +34,7 @@ This repository tracks two data versions:
   row shape and is copied into every benchmark row as `schema_version`.
 - Benchmark version: `v0.1`. This versions the dataset artifact release and is
   used in generated row IDs, manifests, and processed artifact directories such
-  as `data/processed/benchmark-v0.1/`.
+  as `benchmark/v0.1/`.
 
 For example, a row can have ID `mamabench_v0.1_medmcqa_<source_id>` and
 `schema_version: "0.3"`. That means benchmark release `v0.1` uses schema `0.3`;
@@ -49,16 +48,16 @@ This repository does not track a separate Python package version. The Python
 code is treated as benchmark-building tooling in this repo, not as a published
 package release.
 
-The current project pointer is tracked in `configs/current.json`:
+The current project pointer is tracked in `mamabench.json`:
 
 ```json
 {
   "benchmark_version": "v0.1",
   "schema_version": "0.3",
   "schema_file": "schemas/mamabench_v0.3.schema.json",
-  "processed_dir": "data/processed/benchmark-v0.1",
-  "manifest_dir": "data/processed/benchmark-v0.1/manifests",
-  "inspection_dir": "data/processed/benchmark-v0.1/inspection"
+  "benchmark_dir": "benchmark/v0.1",
+  "manifest_dir": "benchmark/v0.1/manifests",
+  "inspection_dir": "benchmark/v0.1/inspection"
 }
 ```
 
@@ -69,8 +68,8 @@ The current in-use schema version is `0.3`. The code source of truth is
 current row shape is kept in `schemas/mamabench_v0.3.schema.json`.
 
 Each benchmark item is one JSON object per line.
-See [docs/schema.md](docs/schema.md) for the explanation and rationale for each
-field. Common fields include:
+See [schemas/mamabench_v0.3.md](schemas/mamabench_v0.3.md) for the explanation
+and rationale for each field. Common fields include:
 
 - `id`
 - `schema_version`
@@ -91,7 +90,7 @@ preserved as `source.answer` when available.
 
 ```bash
 python3 scripts/validate_mamabench.py \
-  data/processed/benchmark-v0.1/medmcqa.jsonl
+  benchmark/v0.1/medmcqa.jsonl
 ```
 
 The command prints a JSON validation report and exits with status `0` when the
@@ -101,7 +100,7 @@ file is valid.
 
 ```bash
 python3 scripts/summarize_mamabench.py \
-  data/processed/benchmark-v0.1/medmcqa.jsonl
+  benchmark/v0.1/medmcqa.jsonl
 ```
 
 The command prints a manifest-style JSON summary with item counts by set type,
@@ -116,8 +115,8 @@ The MedMCQA adapter normalizes the already-filtered OBGYN/Pediatrics TSV from
 ```bash
 python3 scripts/adapt_medmcqa.py \
   /Users/renyi/Downloads/obgyn-qa-collection/medmcqa/data/obgyn_mcq.tsv \
-  data/processed/benchmark-v0.1/medmcqa.jsonl \
-  --manifest-output data/processed/benchmark-v0.1/manifests/medmcqa_manifest.json
+  benchmark/v0.1/medmcqa.jsonl \
+  --manifest-output benchmark/v0.1/manifests/medmcqa_manifest.json
 ```
 
 Adapter behavior:
@@ -129,22 +128,20 @@ Adapter behavior:
   source answer.
 - dataset-level source URL and license are written once in the manifest.
 
-The command writes local generated files under `data/processed/`, which is
+The command writes local generated files under `benchmark/`, which is
 ignored by Git. Release-ready artifacts should be uploaded to Hugging Face
 Datasets rather than committed to this repository.
 
 Generated files for the current MedMCQA artifact:
 
-- `data/processed/benchmark-v0.1/medmcqa.jsonl`: normalized benchmark rows; this
-  is the dataset artifact and stays directly under the benchmark release
-  directory.
-- `data/processed/benchmark-v0.1/manifests/medmcqa_manifest.json`: artifact
-  summary with benchmark version, schema version, source counts, dataset-level
-  source metadata, and the full validation report, including any issues.
+- `benchmark/v0.1/medmcqa.jsonl`: normalized benchmark rows; this is the dataset
+  artifact and stays directly under the benchmark release directory.
+- `benchmark/v0.1/manifests/medmcqa_manifest.json`: artifact summary with
+  benchmark version, schema version, source counts, dataset-level source
+  metadata, and the full validation report, including any issues.
 
 Inspection-only exports, such as a pretty-printed first row, can live under
-`data/processed/benchmark-v0.1/inspection/`. They are not part of the release
-artifact.
+`benchmark/v0.1/inspection/`. They are not part of the release artifact.
 
 ## Run tests
 
@@ -154,8 +151,8 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 ## Next implementation step
 
-After this foundation is stable, add exactly one MCQ source adapter and prove the
-flow:
+After this foundation is stable, add the next source adapter one dataset at a
+time and prove the same flow:
 
 ```text
 raw source -> normalized JSONL -> validation -> manifest summary

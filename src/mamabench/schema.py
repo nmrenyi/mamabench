@@ -9,7 +9,10 @@ SCHEMA_VERSION: Final[str] = "0.1"
 
 
 class Provenance(TypedDict, total=False):
-    """Source metadata carried through normalized benchmark rows."""
+    """Common source metadata carried through normalized benchmark rows.
+
+    Adapters may carry additional source-specific provenance keys at runtime.
+    """
 
     source_url: str | None
     source_split: str | None

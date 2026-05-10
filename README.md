@@ -14,21 +14,24 @@ as versioned dataset releases on Hugging Face Datasets when stable.
 
 ## Current status
 
-This is the Step 1 foundation:
+The repository currently includes:
 
 - canonical JSONL schema definitions
 - validation utilities
 - manifest/summarization utilities
 - CLI wrappers for validation and summarization
 - a tiny synthetic sample file covering MCQ, open-ended, and safety items
+- a MedMCQA adapter for the filtered OBGYN/Pediatrics source file
 - unit tests for valid and invalid rows
 
-No external datasets are downloaded or adapted in this step.
+External datasets are not downloaded by this repository. Local processed outputs
+are regenerated from adapter scripts and ignored by Git.
 
 ## Schema
 
 Each benchmark item is one JSON object per line. The schema version is `0.1`.
-Common fields include:
+See [docs/schema.md](docs/schema.md) for the explanation and rationale for each
+field. Common fields include:
 
 - `id`
 - `schema_version`

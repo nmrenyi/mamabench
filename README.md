@@ -33,6 +33,10 @@ The current in-use schema version is `0.2`. The code source of truth is
 `SCHEMA_VERSION` in `src/mamabench/schema.py`. A machine-readable copy of the
 current row shape is kept in `schemas/mamabench_v0.2.schema.json`.
 
+The current benchmark artifact release is `v0.1`. Benchmark version and schema
+version are separate: row IDs include the benchmark release, while each row's
+`schema_version` describes the JSON row shape.
+
 Each benchmark item is one JSON object per line.
 See [docs/schema.md](docs/schema.md) for the explanation and rationale for each
 field. Common fields include:
@@ -78,9 +82,9 @@ The MedMCQA adapter normalizes the already-filtered OBGYN/Pediatrics TSV from
 ```bash
 python3 scripts/adapt_medmcqa.py \
   /Users/renyi/Downloads/obgyn-qa-collection/medmcqa/data/obgyn_mcq.tsv \
-  data/processed/v0.2/medmcqa.jsonl \
-  --manifest-output data/processed/v0.2/medmcqa_manifest.json \
-  --validation-report-output data/processed/v0.2/medmcqa_validation_report.json
+  data/processed/v0.1/medmcqa.jsonl \
+  --manifest-output data/processed/v0.1/medmcqa_manifest.json \
+  --validation-report-output data/processed/v0.1/medmcqa_validation_report.json
 ```
 
 Adapter behavior:

@@ -14,7 +14,7 @@ version when we have a concrete evaluator or labeling policy that needs them.
 
 ```json
 {
-  "id": "mamabench_v0.2_medmcqa_000dd38b-1d32-4390-9840-27452bd2e383",
+  "id": "mamabench_v0.1_medmcqa_000dd38b-1d32-4390-9840-27452bd2e383",
   "schema_version": "0.2",
   "set_type": "mcq",
   "question": "Best diagnosis of ovulation is by :",
@@ -40,7 +40,7 @@ version when we have a concrete evaluator or labeling policy that needs them.
 
 | Field | Required | Explanation and rationale |
 | --- | --- | --- |
-| `id` | yes | Stable mamabench row identifier. This lets validation reports, manifests, and error analyses refer to the same item without depending only on a source dataset's ID format. |
+| `id` | yes | Stable mamabench row identifier. The version segment refers to the benchmark release, not the schema version. This lets validation reports, manifests, and error analyses refer to the same item without depending only on a source dataset's ID format. |
 | `schema_version` | yes | Canonical schema version. Current value is `0.2`. This lets downstream code reject rows from an incompatible schema. |
 | `set_type` | yes | Question format. Current supported value is `mcq`. |
 | `question` | yes | The model-facing question. |

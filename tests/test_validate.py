@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def valid_mcq(**overrides: Any) -> dict[str, Any]:
     row: dict[str, Any] = {
-        "id": "mamabench_v0.2_unit_test",
+        "id": "mamabench_v0.1_unit_test",
         "schema_version": "0.2",
         "set_type": "mcq",
         "question": "What is the safest next action?",

@@ -33,7 +33,7 @@ class MedMCQAAdapterError(ValueError):
 def load_medmcqa_tsv(
     path: str | Path,
     *,
-    benchmark_version: str = "v0.2",
+    benchmark_version: str = "v0.1",
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """Load a filtered MedMCQA TSV and normalize it to mamabench rows."""
@@ -70,7 +70,7 @@ def normalize_medmcqa_row(
     row: Mapping[str, str],
     *,
     row_number: int,
-    benchmark_version: str = "v0.2",
+    benchmark_version: str = "v0.1",
 ) -> dict[str, Any]:
     """Normalize one MedMCQA TSV row into the mamabench schema."""
 

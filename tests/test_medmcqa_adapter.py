@@ -20,7 +20,7 @@ class MedMCQAAdapterTests(unittest.TestCase):
     def test_load_fixture_emits_valid_rows(self) -> None:
         rows = load_medmcqa_tsv(
             FIXTURE,
-            benchmark_version="v0.2",
+            benchmark_version="v0.1",
         )
 
         report = validate_items(rows)
@@ -46,7 +46,7 @@ class MedMCQAAdapterTests(unittest.TestCase):
         self.assertEqual(row["schema_version"], "0.2")
         self.assertEqual(
             row["id"],
-            "mamabench_v0.2_medmcqa_0036cad0-d22f-453c-b075-322479d19d6e",
+            "mamabench_v0.1_medmcqa_0036cad0-d22f-453c-b075-322479d19d6e",
         )
         self.assertEqual(row["source"]["dataset"], "MedMCQA")
         self.assertEqual(row["source"]["id"], "0036cad0-d22f-453c-b075-322479d19d6e")

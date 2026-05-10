@@ -21,8 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("jsonl_path", help="Path to a normalized mamabench JSONL file.")
     parser.add_argument(
         "--benchmark-version",
-        default="v0.2",
-        help="Benchmark version to include in the manifest. Default: v0.2.",
+        default="v0.1",
+        help="Benchmark version to include in the manifest. Default: v0.1.",
     )
     args = parser.parse_args(argv)
 

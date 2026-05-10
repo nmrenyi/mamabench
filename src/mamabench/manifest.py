@@ -13,7 +13,7 @@ from mamabench.validate import ValidationReport
 def build_manifest(
     items: Iterable[Mapping[str, Any]],
     *,
-    benchmark_version: str = "v0.2",
+    benchmark_version: str = "v0.1",
     schema_version: str = SCHEMA_VERSION,
     validation_report: ValidationReport | None = None,
     created_at: datetime | None = None,

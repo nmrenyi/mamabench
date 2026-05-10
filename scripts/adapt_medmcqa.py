@@ -26,8 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("output_jsonl", help="Path for normalized mamabench JSONL.")
     parser.add_argument(
         "--benchmark-version",
-        default="v0.2",
-        help="Benchmark version used in generated item ids. Default: v0.2.",
+        default="v0.1",
+        help="Benchmark version used in generated item ids. Default: v0.1.",
     )
     parser.add_argument(
         "--limit",

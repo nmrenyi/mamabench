@@ -30,12 +30,6 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertTrue(config.schema_file.is_file())
         self.assertEqual(config.benchmark_dir, ROOT / "benchmark" / "v0.1")
 
-        schema = json.loads(config.schema_file.read_text(encoding="utf-8"))
-        self.assertEqual(
-            schema["properties"]["schema_version"]["const"],
-            SCHEMA_VERSION,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

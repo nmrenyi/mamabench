@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize a mamabench JSONL file as a manifest."""
+"""Print a lightweight summary for a mamabench JSONL file."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
         "--benchmark-version",
         default=None,
         help=(
-            "Benchmark version to include in the manifest. "
+            "Benchmark version to include in the summary. "
             "Default: benchmark_version from mamabench.json."
         ),
     )
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         rows = read_jsonl(args.jsonl_path)
         report = validate_items(rows)
-        manifest = build_manifest(
+        summary = build_manifest(
             rows,
             benchmark_version=benchmark_version,
             schema_version=config.schema_version,
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    print(json.dumps(manifest, indent=2, sort_keys=True))
+    print(json.dumps(summary, indent=2, sort_keys=True))
     return 0 if report.ok else 1
 
 

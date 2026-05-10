@@ -268,6 +268,3 @@ def _git_output(cwd: Path, *args: str) -> str:
         stderr=subprocess.DEVNULL,
         text=True,
     ).strip()
-
-
-MEDMCQA_SOURCE_METADATA = build_medmcqa_source_metadata()

@@ -20,7 +20,7 @@ def build_manifest(
     validation_report: ValidationReport | None = None,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Build a manifest-style summary for a collection of benchmark items."""
+    """Build artifact summary fields shared by manifests and summaries."""
 
     rows = list(items)
     created = created_at or datetime.now(timezone.utc)

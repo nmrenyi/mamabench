@@ -152,6 +152,39 @@ Generated files for the current MedMCQA artifact:
 Inspection-only exports, such as a pretty-printed first row, can live under
 `benchmark/v0.1/inspection/`. They are not part of the release artifact.
 
+## Adapt MedQA-USMLE
+
+The MedQA-USMLE adapter normalizes the already-filtered OBGYN TSV from
+`obgyn-qa-collection` into mamabench JSONL:
+
+```bash
+python3 scripts/adapt_medqa_usmle.py \
+  /Users/renyi/Downloads/obgyn-qa-collection/medqa-usmle/data/obgyn_usmle.tsv \
+  benchmark/v0.1/medqa_usmle.jsonl \
+  --manifest-output benchmark/v0.1/manifests/medqa_usmle_manifest.json
+```
+
+Adapter behavior matches the MedMCQA adapter, with two differences specific to
+this source:
+
+- the prepared TSV has no per-row identifier, so `source.id` is `null` and the
+  benchmark `id` uses a zero-padded row number derived from TSV order, e.g.
+  `mamabench_v0.1_medqa_usmle_0001`. The benchmark ID is stable as long as the
+  upstream prepared file is taken from the same `obgyn-qa-collection` commit
+  recorded in the manifest.
+- the TSV ships a separate `answer` text column; the adapter verifies that it
+  matches the option parsed from `options_formatted` at `correct_letter`, and
+  raises an error if they disagree.
+- the source `category` (`OBSTETRICS` / `GYNECOLOGY` / `REPRODUCTIVE_HEALTH`)
+  and `meta_info` (`step1` / `step2`) columns are not preserved on rows. The
+  v0.3 schema has no row-level label fields; reintroduce them in a future
+  schema version if a scorer needs them.
+
+Generated files for the current MedQA-USMLE artifact:
+
+- `benchmark/v0.1/medqa_usmle.jsonl`: normalized benchmark rows.
+- `benchmark/v0.1/manifests/medqa_usmle_manifest.json`: artifact summary.
+
 ## Run tests
 
 ```bash

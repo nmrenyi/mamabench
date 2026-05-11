@@ -1,0 +1,415 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+from mamabench.adapters.medqa_usmle import (
+    MedQAUSMLEAdapterError,
+    build_medqa_usmle_source_metadata,
+    load_medqa_usmle_tsv,
+    normalize_medqa_usmle_row,
+    parse_options,
+)
+from mamabench.validate import validate_items
+
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURE = ROOT / "tests" / "fixtures" / "medqa_usmle_obgyn_sample.tsv"
+BENCHMARK_VERSION = "v0.1"
+
+
+class MedQAUSMLEAdapterTests(unittest.TestCase):
+    def test_source_metadata_records_prepared_input_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "obgyn-qa-collection"
+            input_tsv = repo / "medqa-usmle" / "data" / "obgyn_usmle.tsv"
+            input_tsv.parent.mkdir(parents=True)
+            input_tsv.write_text(
+                "question\toptions_formatted\tcorrect_letter\tanswer\tcategory\tmeta_info\n"
+            )
+
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
+            subprocess.run(
+                [
+                    "git",
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/nmrenyi/obgyn-qa-collection.git",
+                ],
+                cwd=repo,
+                check=True,
+            )
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=mamabench",
+                    "-c",
+                    "user.email=mamabench@example.test",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+            )
+            commit = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo,
+                text=True,
+            ).strip()
+
+            metadata = build_medqa_usmle_source_metadata(input_tsv)
+            prepared_input = metadata["MedQA-USMLE"]["prepared_input"]
+
+            self.assertEqual(
+                prepared_input["repository"],
+                "https://github.com/nmrenyi/obgyn-qa-collection",
+            )
+            self.assertEqual(
+                prepared_input["path"], "medqa-usmle/data/obgyn_usmle.tsv"
+            )
+            self.assertEqual(prepared_input["commit"], commit)
+            self.assertFalse(prepared_input["git_dirty"])
+            self.assertTrue(prepared_input["verified"])
+            self.assertNotIn("expected", prepared_input)
+            self.assertNotIn("actual", prepared_input)
+
+    def test_source_metadata_does_not_verify_unexpected_remote(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "obgyn-qa-collection"
+            input_tsv = repo / "medqa-usmle" / "data" / "obgyn_usmle.tsv"
+            input_tsv.parent.mkdir(parents=True)
+            input_tsv.write_text(
+                "question\toptions_formatted\tcorrect_letter\tanswer\tcategory\tmeta_info\n"
+            )
+
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
+            subprocess.run(
+                [
+                    "git",
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/example/obgyn-qa-collection.git",
+                ],
+                cwd=repo,
+                check=True,
+            )
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=mamabench",
+                    "-c",
+                    "user.email=mamabench@example.test",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+            )
+
+            metadata = build_medqa_usmle_source_metadata(input_tsv)
+            prepared_input = metadata["MedQA-USMLE"]["prepared_input"]
+
+            self.assertEqual(
+                prepared_input["expected"]["repository"],
+                "https://github.com/nmrenyi/obgyn-qa-collection",
+            )
+            self.assertEqual(
+                prepared_input["expected"]["path"],
+                "medqa-usmle/data/obgyn_usmle.tsv",
+            )
+            self.assertEqual(
+                prepared_input["actual"]["repository"],
+                "https://github.com/example/obgyn-qa-collection.git",
+            )
+            self.assertEqual(
+                prepared_input["actual"]["path"],
+                "medqa-usmle/data/obgyn_usmle.tsv",
+            )
+            self.assertFalse(prepared_input["verified"])
+            self.assertNotIn("repository", prepared_input)
+            self.assertNotIn("path", prepared_input)
+            self.assertNotIn("commit", prepared_input)
+            self.assertNotIn("git_dirty", prepared_input)
+
+    def test_source_metadata_does_not_verify_noncanonical_repo_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "obgyn-qa-collection"
+            input_tsv = repo / "other" / "source.tsv"
+            input_tsv.parent.mkdir(parents=True)
+            input_tsv.write_text(
+                "question\toptions_formatted\tcorrect_letter\tanswer\tcategory\tmeta_info\n"
+            )
+
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=mamabench",
+                    "-c",
+                    "user.email=mamabench@example.test",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+            )
+
+            metadata = build_medqa_usmle_source_metadata(input_tsv)
+            prepared_input = metadata["MedQA-USMLE"]["prepared_input"]
+
+            self.assertEqual(
+                prepared_input["expected"]["path"],
+                "medqa-usmle/data/obgyn_usmle.tsv",
+            )
+            self.assertEqual(prepared_input["actual"]["path"], "other/source.tsv")
+            self.assertFalse(prepared_input["verified"])
+            self.assertNotIn("path", prepared_input)
+            self.assertNotIn("commit", prepared_input)
+            self.assertNotIn("git_dirty", prepared_input)
+
+    def test_source_metadata_does_not_claim_random_local_input_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_tsv = Path(tmpdir) / "source.tsv"
+            input_tsv.write_text(
+                "question\toptions_formatted\tcorrect_letter\tanswer\tcategory\tmeta_info\n"
+            )
+
+            metadata = build_medqa_usmle_source_metadata(input_tsv)
+            prepared_input = metadata["MedQA-USMLE"]["prepared_input"]
+
+            self.assertEqual(
+                prepared_input["expected"]["path"],
+                "medqa-usmle/data/obgyn_usmle.tsv",
+            )
+            self.assertFalse(prepared_input["verified"])
+            self.assertNotIn("actual", prepared_input)
+            self.assertNotIn("path", prepared_input)
+            self.assertNotIn("commit", prepared_input)
+            self.assertNotIn("git_dirty", prepared_input)
+
+    def test_load_fixture_emits_valid_rows(self) -> None:
+        rows = load_medqa_usmle_tsv(
+            FIXTURE,
+            benchmark_version=BENCHMARK_VERSION,
+        )
+
+        report = validate_items(rows)
+
+        self.assertTrue(report.ok, report.to_dict())
+        self.assertEqual(len(rows), 4)
+
+    def test_normalizes_answer_text_index_and_source_answer_key(self) -> None:
+        rows = load_medqa_usmle_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)
+        row = rows[1]
+
+        self.assertEqual(row["source"]["answer"], "B")
+        self.assertEqual(row["answer_index"], 1)
+        self.assertEqual(row["answer"], "MRI of the pituitary")
+        self.assertEqual(
+            row["choices"],
+            [
+                "Pelvic ultrasound",
+                "MRI of the pituitary",
+                "Thyroid biopsy",
+                "Endometrial biopsy",
+            ],
+        )
+
+    def test_preserves_minimal_medqa_usmle_source(self) -> None:
+        row = load_medqa_usmle_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)[1]
+
+        self.assertEqual(row["schema_version"], "0.3")
+        self.assertEqual(row["id"], "mamabench_v0.1_medqa_usmle_0002")
+        self.assertEqual(row["source"]["dataset"], "MedQA-USMLE")
+        self.assertIsNone(row["source"]["id"])
+        self.assertNotIn("license", row["source"])
+        self.assertNotIn("url", row["source"])
+
+    def test_does_not_emit_category_or_meta_info_fields(self) -> None:
+        row = load_medqa_usmle_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)[0]
+
+        self.assertNotIn("category", row)
+        self.assertNotIn("meta_info", row)
+        self.assertNotIn("category", row["source"])
+        self.assertNotIn("meta_info", row["source"])
+
+    def test_handles_more_than_four_options(self) -> None:
+        row = normalize_medqa_usmle_row(
+            {
+                "question": "Five-option question?",
+                "options_formatted": (
+                    "A. First | B. Second | C. Third | D. Fourth | E. Fifth"
+                ),
+                "correct_letter": "E",
+                "answer": "Fifth",
+            },
+            row_number=42,
+            benchmark_version=BENCHMARK_VERSION,
+        )
+
+        self.assertEqual(row["answer"], "Fifth")
+        self.assertEqual(row["answer_index"], 4)
+        self.assertEqual(len(row["choices"]), 5)
+        self.assertEqual(row["id"], "mamabench_v0.1_medqa_usmle_0042")
+
+    def test_limit_caps_loaded_rows(self) -> None:
+        rows = load_medqa_usmle_tsv(
+            FIXTURE,
+            benchmark_version=BENCHMARK_VERSION,
+            limit=2,
+        )
+
+        self.assertEqual(len(rows), 2)
+
+    def test_limit_zero_returns_no_rows(self) -> None:
+        rows = load_medqa_usmle_tsv(
+            FIXTURE,
+            benchmark_version=BENCHMARK_VERSION,
+            limit=0,
+        )
+
+        self.assertEqual(rows, [])
+
+    def test_negative_limit_fails(self) -> None:
+        with self.assertRaisesRegex(
+            MedQAUSMLEAdapterError, "limit must be non-negative"
+        ):
+            load_medqa_usmle_tsv(
+                FIXTURE,
+                benchmark_version=BENCHMARK_VERSION,
+                limit=-1,
+            )
+
+    def test_cli_limit_zero_writes_empty_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_jsonl = Path(tmpdir) / "out.jsonl"
+            manifest_json = Path(tmpdir) / "manifest.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "adapt_medqa_usmle.py"),
+                    str(FIXTURE),
+                    str(output_jsonl),
+                    "--limit",
+                    "0",
+                    "--manifest-output",
+                    str(manifest_json),
+                ],
+                check=False,
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output_jsonl.read_text(encoding="utf-8"), "")
+            manifest = json.loads(manifest_json.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["benchmark_version"], BENCHMARK_VERSION)
+            self.assertEqual(manifest["total_item_count"], 0)
+            self.assertTrue(manifest["validation"]["ok"])
+
+    def test_cli_normalizes_benchmark_version_in_rows_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_jsonl = Path(tmpdir) / "out.jsonl"
+            manifest_json = Path(tmpdir) / "manifest.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "adapt_medqa_usmle.py"),
+                    str(FIXTURE),
+                    str(output_jsonl),
+                    "--benchmark-version",
+                    "0.2",
+                    "--limit",
+                    "1",
+                    "--manifest-output",
+                    str(manifest_json),
+                ],
+                check=False,
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            row = json.loads(output_jsonl.read_text(encoding="utf-8"))
+            manifest = json.loads(manifest_json.read_text(encoding="utf-8"))
+            self.assertTrue(row["id"].startswith("mamabench_v0.2_medqa_usmle_"))
+            self.assertEqual(manifest["benchmark_version"], "v0.2")
+
+    def test_parse_options_preserves_pipes_inside_option_text(self) -> None:
+        options = parse_options(
+            "A. | FSH | B. | Cholesterol | C. | Androgen | D. | Estrogen",
+            row_number=1,
+        )
+
+        self.assertEqual(options["A"], "FSH")
+        self.assertEqual(options["B"], "Cholesterol")
+
+    def test_parse_options_rejects_missing_markers(self) -> None:
+        with self.assertRaisesRegex(
+            MedQAUSMLEAdapterError, "options_formatted is empty"
+        ):
+            parse_options("First | Second", row_number=1)
+
+    def test_unknown_answer_letter_fails(self) -> None:
+        row = {
+            "question": "Which answer is correct?",
+            "options_formatted": "A. First | B. Second | C. Third | D. Fourth",
+            "correct_letter": "E",
+            "answer": "Fifth",
+            "category": "OBSTETRICS",
+            "meta_info": "step2",
+        }
+
+        with self.assertRaisesRegex(MedQAUSMLEAdapterError, "correct_letter"):
+            normalize_medqa_usmle_row(
+                row,
+                row_number=1,
+                benchmark_version=BENCHMARK_VERSION,
+            )
+
+    def test_mismatched_source_answer_text_fails(self) -> None:
+        row = {
+            "question": "Which answer is correct?",
+            "options_formatted": "A. First | B. Second | C. Third | D. Fourth",
+            "correct_letter": "B",
+            "answer": "Third",
+            "category": "OBSTETRICS",
+            "meta_info": "step2",
+        }
+
+        with self.assertRaisesRegex(
+            MedQAUSMLEAdapterError, "does not match parsed option"
+        ):
+            normalize_medqa_usmle_row(
+                row,
+                row_number=1,
+                benchmark_version=BENCHMARK_VERSION,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

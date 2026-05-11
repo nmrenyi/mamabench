@@ -324,6 +324,90 @@ every per-source manifest is OK. The command rejects per-source manifests
 that disagree on `benchmark_version` or `schema_version` and exits non-zero
 when any per-source manifest reports validation failures.
 
+## Publish to Hugging Face Datasets
+
+The dataset is published as
+[`nmrenyi/mamabench`](https://huggingface.co/datasets/nmrenyi/mamabench) on
+Hugging Face Datasets, with a git tag per release version. The publishing
+flow has three pieces:
+
+- `docs/huggingface_dataset_card.md` is the canonical dataset card body.
+  Update this file when documentation changes; it becomes the `README.md` at
+  the root of the HF repo on the next upload.
+- `scripts/build_huggingface_release.py` assembles the upload payload
+  (dataset card, `data/*.jsonl`, manifests, schema files) into a staging
+  directory mirroring the layout the HF repo will have.
+- The `hf` CLI performs repo creation, upload, and tagging.
+
+### Prerequisites
+
+- `hf` CLI from `huggingface_hub` (`pip install --user huggingface_hub`).
+- A Hugging Face access token with **Write** scope on your namespace,
+  generated at <https://huggingface.co/settings/tokens>. Authenticate once
+  with `hf auth login` and paste the token.
+- **Watch out for `HF_TOKEN`:** if that environment variable is set, it
+  takes precedence over the stored login regardless of whether the env-var
+  token has the right scope. If `hf repos create` fails with 403 even after a
+  fresh `hf auth login`, run the publishing commands in a shell where
+  `HF_TOKEN` is unset.
+
+### Cutting a release
+
+After regenerating the per-source artifacts and the release manifest, and
+after bumping `benchmark_version` in `mamabench.json` if this is a new
+release tag:
+
+```bash
+# 1. Update docs/huggingface_dataset_card.md if anything has changed
+#    (row counts, license notes, AfriMed-QA caveats, schema discussion).
+
+# 2. Stage the upload payload locally.
+python3 scripts/build_huggingface_release.py \
+  --staging-dir /tmp/mamabench-hf-staging \
+  --force
+
+# 3. Create the HF dataset repo (idempotent; harmless if it already exists).
+hf repos create nmrenyi/mamabench --type dataset --public --exist-ok
+
+# 4. Upload everything to main. Bump the version in the commit message
+#    to whatever release you're cutting.
+hf upload nmrenyi/mamabench \
+  /tmp/mamabench-hf-staging . \
+  --repo-type dataset \
+  --commit-message "release v0.1"
+
+# 5. Tag the release.
+hf repos tag create nmrenyi/mamabench v0.1 --type dataset
+```
+
+### Verifying after upload
+
+Roundtrip the data files and confirm the row counts match the local
+artifacts:
+
+```bash
+hf download nmrenyi/mamabench --repo-type dataset \
+  --include "data/*.jsonl" --local-dir /tmp/mamabench-hf-verify
+wc -l /tmp/mamabench-hf-verify/data/*.jsonl
+```
+
+The HF Dataset Viewer may take a few minutes to re-index configs after a
+fresh upload; if the preview UI is empty, wait ~5 min and reload.
+
+### Versioning convention
+
+Releases are git tags on the same HF repo (`v0.1`, `v0.2`, …). Consumers pin
+a specific release with the `revision` parameter:
+
+```python
+from datasets import load_dataset
+ds = load_dataset("nmrenyi/mamabench", revision="v0.1")
+```
+
+The HF tag should match `mamabench.json`'s `benchmark_version`. Schema
+version (`schema_version: "0.3"` on every row) is independent of the release
+tag and only changes when the row shape changes.
+
 ## Run tests
 
 ```bash

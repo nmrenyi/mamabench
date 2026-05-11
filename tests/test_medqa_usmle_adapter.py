@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -8,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from mamabench.adapters.medqa_usmle import (
+    CONTENT_HASH_LENGTH,
     MedQAUSMLEAdapterError,
     build_medqa_usmle_source_metadata,
     load_medqa_usmle_tsv,
@@ -20,6 +22,10 @@ from mamabench.validate import validate_items
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "medqa_usmle_obgyn_sample.tsv"
 BENCHMARK_VERSION = "v0.1"
+HASH_PATTERN = re.compile(rf"^[0-9a-f]{{{CONTENT_HASH_LENGTH}}}$")
+ID_PATTERN = re.compile(
+    rf"^mamabench_v0\.1_medqa_usmle_[0-9a-f]{{{CONTENT_HASH_LENGTH}}}$"
+)
 
 
 class MedQAUSMLEAdapterTests(unittest.TestCase):
@@ -237,9 +243,10 @@ class MedQAUSMLEAdapterTests(unittest.TestCase):
         row = load_medqa_usmle_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)[1]
 
         self.assertEqual(row["schema_version"], "0.3")
-        self.assertEqual(row["id"], "mamabench_v0.1_medqa_usmle_0002")
+        self.assertRegex(row["id"], ID_PATTERN)
         self.assertEqual(row["source"]["dataset"], "MedQA-USMLE")
-        self.assertIsNone(row["source"]["id"])
+        self.assertRegex(row["source"]["id"], HASH_PATTERN)
+        self.assertTrue(row["id"].endswith(row["source"]["id"]))
         self.assertNotIn("license", row["source"])
         self.assertNotIn("url", row["source"])
 
@@ -268,7 +275,72 @@ class MedQAUSMLEAdapterTests(unittest.TestCase):
         self.assertEqual(row["answer"], "Fifth")
         self.assertEqual(row["answer_index"], 4)
         self.assertEqual(len(row["choices"]), 5)
-        self.assertEqual(row["id"], "mamabench_v0.1_medqa_usmle_0042")
+        self.assertRegex(row["id"], ID_PATTERN)
+        self.assertTrue(row["id"].endswith(row["source"]["id"]))
+
+    def test_content_hash_is_stable_across_row_number(self) -> None:
+        source_row = {
+            "question": "Stable hash question?",
+            "options_formatted": "A. First | B. Second | C. Third | D. Fourth",
+            "correct_letter": "C",
+            "answer": "Third",
+        }
+
+        at_row_1 = normalize_medqa_usmle_row(
+            source_row, row_number=1, benchmark_version=BENCHMARK_VERSION
+        )
+        at_row_500 = normalize_medqa_usmle_row(
+            source_row, row_number=500, benchmark_version=BENCHMARK_VERSION
+        )
+
+        self.assertEqual(at_row_1["id"], at_row_500["id"])
+        self.assertEqual(at_row_1["source"]["id"], at_row_500["source"]["id"])
+
+    def test_content_hash_is_stable_across_option_permutation(self) -> None:
+        base_row = normalize_medqa_usmle_row(
+            {
+                "question": "Permutation question?",
+                "options_formatted": "A. First | B. Second | C. Third | D. Fourth",
+                "correct_letter": "C",
+                "answer": "Third",
+            },
+            row_number=1,
+            benchmark_version=BENCHMARK_VERSION,
+        )
+        permuted_row = normalize_medqa_usmle_row(
+            {
+                "question": "Permutation question?",
+                "options_formatted": "A. Second | B. Fourth | C. Third | D. First",
+                "correct_letter": "C",
+                "answer": "Third",
+            },
+            row_number=2,
+            benchmark_version=BENCHMARK_VERSION,
+        )
+
+        self.assertEqual(base_row["source"]["id"], permuted_row["source"]["id"])
+
+    def test_duplicate_content_in_same_dataset_is_flagged_by_validator(self) -> None:
+        source_row = {
+            "question": "Duplicate-content question?",
+            "options_formatted": "A. First | B. Second | C. Third | D. Fourth",
+            "correct_letter": "A",
+            "answer": "First",
+        }
+
+        first = normalize_medqa_usmle_row(
+            source_row, row_number=1, benchmark_version=BENCHMARK_VERSION
+        )
+        second = normalize_medqa_usmle_row(
+            source_row, row_number=2, benchmark_version=BENCHMARK_VERSION
+        )
+
+        report = validate_items([first, second])
+
+        self.assertFalse(report.ok)
+        fields_with_issues = {issue.field for issue in report.issues}
+        self.assertIn("id", fields_with_issues)
+        self.assertIn("source.id", fields_with_issues)
 
     def test_limit_caps_loaded_rows(self) -> None:
         rows = load_medqa_usmle_tsv(

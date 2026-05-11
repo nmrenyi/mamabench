@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import csv
-import re
-import subprocess
+import hashlib
 from pathlib import Path
 from typing import Any, Mapping
 
+from mamabench.adapters import _options, _provenance
 from mamabench.config import normalize_benchmark_version
 from mamabench.schema import SCHEMA_VERSION
 
@@ -17,10 +17,6 @@ MEDQA_USMLE_SOURCE_URL = "https://github.com/jind11/MedQA"
 MEDQA_USMLE_LICENSE = "MIT"
 PREPARED_INPUT_REPOSITORY = "https://github.com/nmrenyi/obgyn-qa-collection"
 PREPARED_INPUT_PATH = "medqa-usmle/data/obgyn_usmle.tsv"
-PREPARED_INPUT_EXPECTED: dict[str, Any] = {
-    "repository": PREPARED_INPUT_REPOSITORY,
-    "path": PREPARED_INPUT_PATH,
-}
 PREPARED_INPUT_BASE_METADATA: dict[str, Any] = {
     "description": (
         "Pre-filtered OBGYN subset of the MedQA US question bank used as "
@@ -38,7 +34,7 @@ REQUIRED_COLUMNS = frozenset(
     }
 )
 
-OPTION_MARKER_PATTERN = re.compile(r"(?:^|\s\|\s)([A-Z])\.\s*")
+CONTENT_HASH_LENGTH = 12
 
 
 class MedQAUSMLEAdapterError(ValueError):
@@ -54,7 +50,12 @@ def build_medqa_usmle_source_metadata(
         MEDQA_USMLE_SOURCE_DATASET: {
             "url": MEDQA_USMLE_SOURCE_URL,
             "license": MEDQA_USMLE_LICENSE,
-            "prepared_input": _prepared_input_metadata(input_tsv),
+            "prepared_input": _provenance.build_prepared_input_metadata(
+                input_tsv,
+                expected_repository=PREPARED_INPUT_REPOSITORY,
+                expected_path=PREPARED_INPUT_PATH,
+                base_metadata=PREPARED_INPUT_BASE_METADATA,
+            ),
         }
     }
 
@@ -122,14 +123,15 @@ def normalize_medqa_usmle_row(
     answer_index = letters.index(correct_letter)
     answer = choices[answer_index]
 
-    if _clean_text(source_answer_text) != answer:
+    if _options.clean_text(source_answer_text) != answer:
         raise MedQAUSMLEAdapterError(
             f"row {row_number}: source answer text {source_answer_text!r} "
             f"does not match parsed option {answer!r} at letter {correct_letter}"
         )
 
+    content_hash = _content_hash(question, choices, answer)
     return {
-        "id": _benchmark_id(benchmark_version, row_number),
+        "id": _benchmark_id(benchmark_version, content_hash),
         "schema_version": SCHEMA_VERSION,
         "set_type": "mcq",
         "question": question,
@@ -138,7 +140,7 @@ def normalize_medqa_usmle_row(
         "answer_index": answer_index,
         "source": {
             "dataset": MEDQA_USMLE_SOURCE_DATASET,
-            "id": None,
+            "id": content_hash,
             "answer": correct_letter,
         },
     }
@@ -147,133 +149,34 @@ def normalize_medqa_usmle_row(
 def parse_options(options_formatted: str, row_number: int) -> dict[str, str]:
     """Parse `A. ... | B. ...` option text into an ordered letter map."""
 
-    matches = list(OPTION_MARKER_PATTERN.finditer(options_formatted))
-    if not matches:
-        raise MedQAUSMLEAdapterError(f"row {row_number}: options_formatted is empty")
-
-    parsed: dict[str, str] = {}
-    for index, match in enumerate(matches):
-        letter = match.group(1)
-        next_start = (
-            matches[index + 1].start()
-            if index + 1 < len(matches)
-            else len(options_formatted)
-        )
-        text = _clean_option_text(options_formatted[match.end() : next_start])
-        if letter in parsed:
-            raise MedQAUSMLEAdapterError(
-                f"row {row_number}: duplicate option letter {letter!r}"
-            )
-        if not text:
-            raise MedQAUSMLEAdapterError(
-                f"row {row_number}: empty option text for {letter!r}"
-            )
-        parsed[letter] = text
-
-    return parsed
+    return _options.parse_options(
+        options_formatted,
+        row_number=row_number,
+        error_cls=MedQAUSMLEAdapterError,
+    )
 
 
 def _required_text(row: Mapping[str, str], field: str, row_number: int) -> str:
-    value = _clean_text(row.get(field, ""))
+    value = _options.clean_text(row.get(field, ""))
     if not value:
         raise MedQAUSMLEAdapterError(f"row {row_number}: missing {field}")
     return value
 
 
-def _clean_text(value: str) -> str:
-    return " ".join(str(value).replace("\\n", " ").split())
-
-
-def _clean_option_text(value: str) -> str:
-    return _clean_text(value).strip(" |")
-
-
-def _benchmark_id(benchmark_version: str, row_number: int) -> str:
+def _benchmark_id(benchmark_version: str, content_hash: str) -> str:
     version = normalize_benchmark_version(benchmark_version)
-    return f"mamabench_{version}_medqa_usmle_{row_number:04d}"
+    return f"mamabench_{version}_medqa_usmle_{content_hash}"
 
 
-def _prepared_input_metadata(input_tsv: str | Path | None) -> dict[str, Any]:
-    git_metadata = _prepared_input_git_metadata(input_tsv)
-    if git_metadata is None:
-        git_metadata = {
-            "expected": dict(PREPARED_INPUT_EXPECTED),
-            "verified": False,
-        }
-    return {**PREPARED_INPUT_BASE_METADATA, **git_metadata}
-
-
-def _prepared_input_git_metadata(input_tsv: str | Path | None) -> dict[str, Any] | None:
-    if input_tsv is None:
-        return None
-
-    input_path = Path(input_tsv).resolve()
-    git_directory = input_path.parent if input_path.is_file() else input_path
-
-    try:
-        repo_root = Path(
-            _git_output(git_directory, "rev-parse", "--show-toplevel")
-        ).resolve()
-    except (OSError, subprocess.CalledProcessError):
-        return None
-
-    try:
-        relative_path = input_path.relative_to(repo_root).as_posix()
-        try:
-            repository = _git_output(repo_root, "remote", "get-url", "origin")
-        except (OSError, subprocess.CalledProcessError):
-            return _unverified_prepared_input(actual={"path": relative_path})
-        if (
-            relative_path != PREPARED_INPUT_PATH
-            or not _repositories_match(repository, PREPARED_INPUT_REPOSITORY)
-        ):
-            return _unverified_prepared_input(
-                actual={"repository": repository, "path": relative_path}
-            )
-
-        commit = _git_output(repo_root, "rev-parse", "HEAD")
-        dirty = bool(_git_output(repo_root, "status", "--porcelain"))
-    except (OSError, ValueError, subprocess.CalledProcessError):
-        return None
-
-    return {
-        "repository": PREPARED_INPUT_REPOSITORY,
-        "path": relative_path,
-        "commit": commit,
-        "git_dirty": dirty,
-        "verified": True,
-    }
-
-
-def _unverified_prepared_input(*, actual: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "expected": dict(PREPARED_INPUT_EXPECTED),
-        "actual": {key: value for key, value in actual.items() if value},
-        "verified": False,
-    }
-
-
-def _repositories_match(actual: str, expected: str) -> bool:
-    return _canonical_repository_url(actual) == _canonical_repository_url(expected)
-
-
-def _canonical_repository_url(value: str) -> str:
-    repository = value.strip().rstrip("/")
-    if repository.endswith(".git"):
-        repository = repository[: -len(".git")]
-    if repository.startswith("git@github.com:"):
-        repository = f"github.com/{repository.removeprefix('git@github.com:')}"
-    for prefix in ("https://", "http://"):
-        if repository.startswith(prefix):
-            repository = repository.removeprefix(prefix)
-            break
-    return repository.removeprefix("www.").rstrip("/")
-
-
-def _git_output(cwd: Path, *args: str) -> str:
-    return subprocess.check_output(
-        ["git", *args],
-        cwd=cwd,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    ).strip()
+def _content_hash(question: str, choices: list[str], answer: str) -> str:
+    # Sorting choices keeps the hash stable under option permutation, since the
+    # MCQ task is unchanged by reordering the option list. Including the answer
+    # text separates rows that share a question stem but key on different options.
+    payload = "\n".join(
+        [
+            question.strip(),
+            "\n".join(sorted(choice.strip() for choice in choices)),
+            answer.strip(),
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:CONTENT_HASH_LENGTH]

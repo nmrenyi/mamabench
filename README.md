@@ -164,14 +164,18 @@ python3 scripts/adapt_medqa_usmle.py \
   --manifest-output benchmark/v0.1/manifests/medqa_usmle_manifest.json
 ```
 
-Adapter behavior matches the MedMCQA adapter, with two differences specific to
-this source:
+Adapter behavior matches the MedMCQA adapter, with these source-specific
+differences:
 
-- the prepared TSV has no per-row identifier, so `source.id` is `null` and the
-  benchmark `id` uses a zero-padded row number derived from TSV order, e.g.
-  `mamabench_v0.1_medqa_usmle_0001`. The benchmark ID is stable as long as the
-  upstream prepared file is taken from the same `obgyn-qa-collection` commit
-  recorded in the manifest.
+- the prepared TSV has no per-row identifier, so `source.id` and the trailing
+  token of the benchmark `id` are derived from a 12-character SHA-256 prefix
+  over the row's question text, sorted choice set, and correct answer text.
+  Example: `mamabench_v0.1_medqa_usmle_31f1cbe15c5c`. Sorting the choices makes
+  the hash stable under option permutation; including the answer separates
+  rows that share a question stem but key on different options. The same row
+  content always produces the same ID across upstream re-extractions, and
+  identical-content rows are caught by the validator's duplicate-id and
+  duplicate-source-id checks.
 - the TSV ships a separate `answer` text column; the adapter verifies that it
   matches the option parsed from `options_formatted` at `correct_letter`, and
   raises an error if they disagree.

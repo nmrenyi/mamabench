@@ -22,19 +22,20 @@ def load_script(script_name: str) -> ModuleType:
 
 
 class CliHelpTests(unittest.TestCase):
-    def test_adapt_help_does_not_load_project_config(self) -> None:
-        module = load_script("adapt_medmcqa.py")
-        module.load_project_config = self.fail_if_config_loads
+    def test_adapt_medmcqa_help_does_not_load_project_config(self) -> None:
+        self._assert_help_skips_config("adapt_medmcqa.py")
 
-        with self.assertRaises(SystemExit) as exc, contextlib.redirect_stdout(
-            io.StringIO()
-        ):
-            module.main(["--help"])
+    def test_adapt_medqa_usmle_help_does_not_load_project_config(self) -> None:
+        self._assert_help_skips_config("adapt_medqa_usmle.py")
 
-        self.assertEqual(exc.exception.code, 0)
+    def test_adapt_afrimedqa_help_does_not_load_project_config(self) -> None:
+        self._assert_help_skips_config("adapt_afrimedqa.py")
 
     def test_summarize_help_does_not_load_project_config(self) -> None:
-        module = load_script("summarize_mamabench.py")
+        self._assert_help_skips_config("summarize_mamabench.py")
+
+    def _assert_help_skips_config(self, script_name: str) -> None:
+        module = load_script(script_name)
         module.load_project_config = self.fail_if_config_loads
 
         with self.assertRaises(SystemExit) as exc, contextlib.redirect_stdout(

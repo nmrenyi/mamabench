@@ -1,5 +1,7 @@
 # mamabench
 
+[![tests](https://github.com/nmrenyi/mamabench/actions/workflows/tests.yml/badge.svg)](https://github.com/nmrenyi/mamabench/actions/workflows/tests.yml)
+
 `mamabench` builds normalized QA benchmark artifacts for evaluating the end-to-end
 MAMAI system: a Gemma 4 E4B + RAG medical-advice chatbot for nurses and midwives
 in Zanzibar.

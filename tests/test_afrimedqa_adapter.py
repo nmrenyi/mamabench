@@ -19,6 +19,8 @@ from mamabench.adapters.afrimedqa import (
 )
 from mamabench.validate import validate_items
 
+import _adapter_provenance_tests as provenance
+
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "afrimedqa_obgyn_sample.tsv"
@@ -30,185 +32,26 @@ ID_PATTERN = re.compile(
 FIXTURE_HEADER = (
     "question_clean\toptions_formatted\tcorrect_letter\n"
 )
-
-
-def _init_repo_with_fixture(repo: Path, tsv_relpath: Path) -> str:
-    """Initialize a throwaway git repo containing an empty AfriMed-QA TSV."""
-
-    tsv = repo / tsv_relpath
-    tsv.parent.mkdir(parents=True)
-    tsv.write_text(FIXTURE_HEADER)
-
-    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
-    subprocess.run(["git", "add", "."], cwd=repo, check=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.name=mamabench",
-            "-c",
-            "user.email=mamabench@example.test",
-            "commit",
-            "-m",
-            "fixture",
-        ],
-        cwd=repo,
-        check=True,
-        stdout=subprocess.PIPE,
-    )
-    return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=repo, text=True
-    ).strip()
+PROVENANCE_CASE = dict(
+    dataset_name="AfriMed-QA",
+    expected_path="afrimedqa/data/obgyn_mcq.tsv",
+    tsv_header=FIXTURE_HEADER,
+    build_metadata=build_afrimedqa_source_metadata,
+)
 
 
 class AfriMedQAAdapterTests(unittest.TestCase):
     def test_source_metadata_records_prepared_input_commit(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            repo = Path(tmpdir) / "obgyn-qa-collection"
-            tsv_relpath = Path("afrimedqa") / "data" / "obgyn_mcq.tsv"
-
-            tsv = repo / tsv_relpath
-            tsv.parent.mkdir(parents=True)
-            tsv.write_text(FIXTURE_HEADER)
-
-            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
-            subprocess.run(
-                [
-                    "git",
-                    "remote",
-                    "add",
-                    "origin",
-                    "https://github.com/nmrenyi/obgyn-qa-collection.git",
-                ],
-                cwd=repo,
-                check=True,
-            )
-            subprocess.run(["git", "add", "."], cwd=repo, check=True)
-            subprocess.run(
-                [
-                    "git",
-                    "-c",
-                    "user.name=mamabench",
-                    "-c",
-                    "user.email=mamabench@example.test",
-                    "commit",
-                    "-m",
-                    "fixture",
-                ],
-                cwd=repo,
-                check=True,
-                stdout=subprocess.PIPE,
-            )
-            commit = subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=repo, text=True
-            ).strip()
-
-            metadata = build_afrimedqa_source_metadata(tsv)
-            prepared = metadata["AfriMed-QA"]["prepared_input"]
-
-            self.assertEqual(
-                prepared["repository"],
-                "https://github.com/nmrenyi/obgyn-qa-collection",
-            )
-            self.assertEqual(prepared["path"], "afrimedqa/data/obgyn_mcq.tsv")
-            self.assertEqual(prepared["commit"], commit)
-            self.assertFalse(prepared["git_dirty"])
-            self.assertTrue(prepared["verified"])
-            self.assertNotIn("expected", prepared)
-            self.assertNotIn("actual", prepared)
+        provenance.assert_verified_prepared_input(self, **PROVENANCE_CASE)
 
     def test_source_metadata_does_not_verify_unexpected_remote(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            repo = Path(tmpdir) / "obgyn-qa-collection"
-            tsv_relpath = Path("afrimedqa") / "data" / "obgyn_mcq.tsv"
-            tsv = repo / tsv_relpath
-            tsv.parent.mkdir(parents=True)
-            tsv.write_text(FIXTURE_HEADER)
-
-            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE)
-            subprocess.run(
-                [
-                    "git",
-                    "remote",
-                    "add",
-                    "origin",
-                    "https://github.com/example/obgyn-qa-collection.git",
-                ],
-                cwd=repo,
-                check=True,
-            )
-            subprocess.run(["git", "add", "."], cwd=repo, check=True)
-            subprocess.run(
-                [
-                    "git",
-                    "-c",
-                    "user.name=mamabench",
-                    "-c",
-                    "user.email=mamabench@example.test",
-                    "commit",
-                    "-m",
-                    "fixture",
-                ],
-                cwd=repo,
-                check=True,
-                stdout=subprocess.PIPE,
-            )
-
-            metadata = build_afrimedqa_source_metadata(tsv)
-            prepared = metadata["AfriMed-QA"]["prepared_input"]
-
-            self.assertEqual(
-                prepared["expected"]["repository"],
-                "https://github.com/nmrenyi/obgyn-qa-collection",
-            )
-            self.assertEqual(
-                prepared["expected"]["path"], "afrimedqa/data/obgyn_mcq.tsv"
-            )
-            self.assertEqual(
-                prepared["actual"]["repository"],
-                "https://github.com/example/obgyn-qa-collection.git",
-            )
-            self.assertEqual(
-                prepared["actual"]["path"], "afrimedqa/data/obgyn_mcq.tsv"
-            )
-            self.assertFalse(prepared["verified"])
-            self.assertNotIn("repository", prepared)
-            self.assertNotIn("path", prepared)
-            self.assertNotIn("commit", prepared)
-            self.assertNotIn("git_dirty", prepared)
+        provenance.assert_unexpected_remote(self, **PROVENANCE_CASE)
 
     def test_source_metadata_does_not_verify_noncanonical_repo_path(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            repo = Path(tmpdir) / "obgyn-qa-collection"
-            _init_repo_with_fixture(repo, Path("other") / "source.tsv")
-            metadata = build_afrimedqa_source_metadata(repo / "other" / "source.tsv")
-            prepared = metadata["AfriMed-QA"]["prepared_input"]
-
-            self.assertEqual(
-                prepared["expected"]["path"], "afrimedqa/data/obgyn_mcq.tsv"
-            )
-            self.assertEqual(prepared["actual"]["path"], "other/source.tsv")
-            self.assertFalse(prepared["verified"])
-            self.assertNotIn("path", prepared)
-            self.assertNotIn("commit", prepared)
-            self.assertNotIn("git_dirty", prepared)
+        provenance.assert_noncanonical_path(self, **PROVENANCE_CASE)
 
     def test_source_metadata_does_not_claim_random_local_input_path(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tsv = Path(tmpdir) / "source.tsv"
-            tsv.write_text(FIXTURE_HEADER)
-
-            metadata = build_afrimedqa_source_metadata(tsv)
-            prepared = metadata["AfriMed-QA"]["prepared_input"]
-
-            self.assertEqual(
-                prepared["expected"]["path"], "afrimedqa/data/obgyn_mcq.tsv"
-            )
-            self.assertFalse(prepared["verified"])
-            self.assertNotIn("actual", prepared)
-            self.assertNotIn("path", prepared)
-            self.assertNotIn("commit", prepared)
-            self.assertNotIn("git_dirty", prepared)
+        provenance.assert_random_local_input_path(self, **PROVENANCE_CASE)
 
     def test_source_metadata_carries_noncommercial_license_notes(self) -> None:
         metadata = build_afrimedqa_source_metadata(None)

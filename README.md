@@ -237,6 +237,65 @@ Adapter behavior:
   `license_notes` field; downstream consumers must respect the non-commercial
   restriction.
 
+### AfriMed-QA data quality notes
+
+AfriMed-QA has more invasive normalization than the MedMCQA and MedQA-USMLE
+adapters because the source TSV carries several quality issues. The manifest's
+`source_datasets["AfriMed-QA"].filter` block records the exact counts; this
+section explains what those numbers mean and which issues were accepted
+unpatched.
+
+**Retention: 660 source rows → 534 kept (81%).** Two hard filters account for
+the drops:
+
+- 112 multi-answer rows (`correct_letter` is comma-separated, e.g. `A,C,D`)
+  that the v0.3 schema's single `answer_index` cannot represent.
+- 14 rows where the correct option's text also appears at another choice
+  position, making them unscorable as MCQ (a model picking the right text via
+  a "wrong" letter would be marked incorrect). Several of these are upstream
+  corruption rather than legitimate questions — the worst case has the literal
+  string `"They are intraepithelial lesions of the cervix"` at all five choice
+  positions.
+
+**In-place cleanup: 27 rows had embedded letter prefixes in the option text**
+(e.g. choice at letter B was literally `"B. Hyperinsulinemia"`, because the
+upstream extractor did not strip inner labels when adding the outer
+`A. ... | B. ...` markers). The adapter strips the prefix when at least two
+choices in a row begin with their position letter followed by `.` or `)`. The
+answer text is re-derived from the stripped choices so the
+`answer == choices[answer_index]` invariant is preserved automatically. This
+fixed 18 of the 19 rows that previously had a letter prefix in the canonical
+`answer` field.
+
+**Accepted cosmetic issues that were not patched in the adapter:**
+
+- ~6 rows where a single choice has an embedded strict-form prefix, below the
+  ≥2 threshold needed to trigger the strip.
+- ~12-15 rows with soft-form prefixes (letter + space + text, no punctuation,
+  e.g. `"A it is considered..."`). Auto-stripping these would risk
+  over-stripping the indefinite article in legitimate text like
+  `"A complete placenta and a contracted uterus"`.
+- 38 stem-style short questions (`"Regarding chronic pelvic pain"`,
+  `"The Copper IUD"`) where the question is a topic label and the choices are
+  true/false statements. Legitimate MCQ format but visually distinctive.
+- 16 rows with duplicate option text at non-answer positions. The correct
+  answer's text still appears at exactly one position, so scoring is
+  unaffected; the duplication is just upstream data noise.
+- 5 questions with a leading `"."` (a lost numbering prefix upstream).
+- 39 rows containing non-ASCII typographic characters (curly apostrophes,
+  degree signs, em dashes, accented letters). No encoding corruption.
+
+None of the accepted issues break letter-based MCQ scoring. For each affected
+row the option text and the canonical `answer` field share the same shape, so
+a text-matching scorer also remains internally consistent — it just sees
+slightly awkward strings.
+
+**For consumers who need pristine text:** filter the artifact by inspecting
+choices for any leading `[A-Ea-e][\. )]` or short-question heuristics, or
+fetch only rows whose `source.id` is in a hand-curated allowlist. The
+manifest's `filter` block lets you reconcile counts against the upstream TSV
+commit recorded in `prepared_input`.
+
 Generated files for the current AfriMed-QA artifact:
 
 - `benchmark/v0.1/afrimedqa.jsonl`: normalized benchmark rows.

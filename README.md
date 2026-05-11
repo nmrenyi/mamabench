@@ -189,6 +189,40 @@ Generated files for the current MedQA-USMLE artifact:
 - `benchmark/v0.1/medqa_usmle.jsonl`: normalized benchmark rows.
 - `benchmark/v0.1/manifests/medqa_usmle_manifest.json`: artifact summary.
 
+## Adapt AfriMed-QA
+
+The AfriMed-QA adapter normalizes the already-filtered OBGYN MCQ TSV from
+`obgyn-qa-collection` into mamabench JSONL. Single-answer rows only:
+
+```bash
+python3 scripts/adapt_afrimedqa.py \
+  /Users/renyi/Downloads/obgyn-qa-collection/afrimedqa/data/obgyn_mcq.tsv \
+  benchmark/v0.1/afrimedqa.jsonl \
+  --manifest-output benchmark/v0.1/manifests/afrimedqa_manifest.json
+```
+
+Adapter behavior:
+
+- multi-answer rows, where `correct_letter` is a comma-separated list such as
+  `A,C,D`, cannot be represented by the v0.3 schema's single `answer_index` and
+  are skipped at load time. The manifest's `source_datasets["AfriMed-QA"]
+  .filter` block records `total_source_rows`, `single_answer_rows`, and
+  `multi_answer_rows_skipped` so this information loss is auditable.
+- `source.id` and the trailing token of the benchmark `id` are derived from the
+  same content hash used by the MedQA-USMLE adapter
+  (`sha256(question + sorted_choices + answer)[:12]`).
+- the source TSV column is `question_clean`; it is normalized to canonical
+  `question` on output.
+- AfriMed-QA is licensed under **CC BY-NC-SA 4.0**, a non-commercial
+  share-alike license. The manifest records this in both `license` and a
+  `license_notes` field; downstream consumers must respect the non-commercial
+  restriction.
+
+Generated files for the current AfriMed-QA artifact:
+
+- `benchmark/v0.1/afrimedqa.jsonl`: normalized benchmark rows.
+- `benchmark/v0.1/manifests/afrimedqa_manifest.json`: artifact summary.
+
 ## Run tests
 
 ```bash

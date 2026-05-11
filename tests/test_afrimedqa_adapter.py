@@ -251,7 +251,7 @@ class AfriMedQAAdapterTests(unittest.TestCase):
         report = validate_items(rows)
 
         self.assertTrue(report.ok, report.to_dict())
-        self.assertEqual(len(rows), 5)
+        self.assertEqual(len(rows), 6)
 
     def test_load_fixture_filter_stats_record_both_skip_kinds(self) -> None:
         _, stats = load_afrimedqa_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)
@@ -259,11 +259,11 @@ class AfriMedQAAdapterTests(unittest.TestCase):
         self.assertEqual(
             stats,
             AfriMedQAFilterStats(
-                total_source_rows=7,
-                single_answer_rows=6,
+                total_source_rows=8,
+                single_answer_rows=7,
                 multi_answer_rows_skipped=1,
                 ambiguous_answer_position_rows_skipped=1,
-                kept_rows=5,
+                kept_rows=6,
             ),
         )
 
@@ -281,6 +281,91 @@ class AfriMedQAAdapterTests(unittest.TestCase):
                 1,
                 f"row {row['id']} has answer text duplicated in choices",
             )
+        self.assertEqual(stats.ambiguous_answer_position_rows_skipped, 1)
+
+    def test_strips_embedded_position_prefixes_when_two_or_more_present(self) -> None:
+        # All five choices start with their own position letter (mixed case +
+        # both `.` and `)` forms) -> the prefix is stripped from every choice
+        # and `answer` is re-derived to match the stripped text.
+        row = normalize_afrimedqa_row(
+            {
+                "question_clean": "About PCOS the following are correct except:",
+                "options_formatted": (
+                    "A. A. First | B. b. Second | C. C) Third | D. d) Fourth | E. E. Fifth"
+                ),
+                "correct_letter": "B",
+            },
+            row_number=1,
+            benchmark_version=BENCHMARK_VERSION,
+        )
+
+        self.assertEqual(
+            row["choices"], ["First", "Second", "Third", "Fourth", "Fifth"]
+        )
+        self.assertEqual(row["answer"], "Second")
+        self.assertEqual(row["answer_index"], 1)
+        # Schema invariant still holds.
+        self.assertEqual(row["answer"], row["choices"][row["answer_index"]])
+
+    def test_does_not_strip_when_only_one_choice_has_embedded_prefix(self) -> None:
+        # Only choice A has a position-matching prefix; threshold of >= 2 is
+        # not met, so nothing is stripped.
+        row = normalize_afrimedqa_row(
+            {
+                "question_clean": "Which is the right answer?",
+                "options_formatted": (
+                    "A. A. Real prefix | B. Bare option | C. Bare option two | D. Bare option three"
+                ),
+                "correct_letter": "A",
+            },
+            row_number=1,
+            benchmark_version=BENCHMARK_VERSION,
+        )
+
+        self.assertEqual(row["choices"][0], "A. Real prefix")
+
+    def test_does_not_strip_article_a_before_a_word(self) -> None:
+        # "A complete..." is the indefinite article, not an embedded prefix.
+        # No choice text starts with "A." or "A)", so no strip should occur.
+        row = normalize_afrimedqa_row(
+            {
+                "question_clean": "Pick the placental status that prompts suspicion of tears.",
+                "options_formatted": (
+                    "A. A complete placenta and a contracted uterus "
+                    "| B. An incomplete placenta and a contracted uterus "
+                    "| C. A complete placenta and a relaxed uterus "
+                    "| D. An incomplete placenta and a relaxed uterus"
+                ),
+                "correct_letter": "D",
+            },
+            row_number=1,
+            benchmark_version=BENCHMARK_VERSION,
+        )
+
+        for choice in row["choices"]:
+            self.assertFalse(choice.startswith("complete"))
+            self.assertFalse(choice.startswith("incomplete"))
+        self.assertEqual(row["choices"][0], "A complete placenta and a contracted uterus")
+
+    def test_strip_introduced_ambiguity_is_caught_by_load_filter(self) -> None:
+        # After stripping, choices A ("Foo") and B ("Foo") become identical.
+        # If the correct letter points at either, the row is unscorable;
+        # `load_afrimedqa_tsv` should drop it via the ambiguity filter.
+        tmp = Path(tempfile.mkstemp(suffix=".tsv")[1])
+        self.addCleanup(tmp.unlink)
+        tmp.write_text(
+            FIXTURE_HEADER
+            + (
+                "Strip then collide?\t"
+                "A. A. Foo | B. B. Foo | C. C. Bar | D. D. Baz | E. E. Qux\t"
+                "A\n"
+            ),
+            encoding="utf-8",
+        )
+
+        rows, stats = load_afrimedqa_tsv(tmp, benchmark_version=BENCHMARK_VERSION)
+
+        self.assertEqual(rows, [])
         self.assertEqual(stats.ambiguous_answer_position_rows_skipped, 1)
 
     def test_load_keeps_benign_duplicate_choice_row(self) -> None:
@@ -526,11 +611,11 @@ class AfriMedQAAdapterTests(unittest.TestCase):
             self.assertEqual(
                 block["filter"],
                 {
-                    "total_source_rows": 7,
-                    "single_answer_rows": 6,
+                    "total_source_rows": 8,
+                    "single_answer_rows": 7,
                     "multi_answer_rows_skipped": 1,
                     "ambiguous_answer_position_rows_skipped": 1,
-                    "kept_rows": 5,
+                    "kept_rows": 6,
                 },
             )
             self.assertEqual(block["license"], "CC BY-NC-SA 4.0")

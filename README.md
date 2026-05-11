@@ -219,6 +219,14 @@ Adapter behavior:
   `kept_rows`, with the accounting invariants
   `total = single + multi_skipped` and
   `single = ambiguous_skipped + kept`.
+- one row-level normalization: when at least two choices in a row begin with
+  their own position letter as a prefix (e.g. the choice at position B is the
+  literal string `"B. Hyperinsulinemia"`), the embedded prefix is stripped
+  from every matching choice. This cleans up an upstream extraction quirk
+  where inner letter labels were not removed when the outer
+  `A. ... | B. ...` markers were added. Both `.` and `)` separators and both
+  cases are recognized. The `≥2` threshold prevents over-stripping legitimate
+  text such as a single choice that happens to begin with `"E. coli"`.
 - `source.id` and the trailing token of the benchmark `id` are derived from the
   same content hash used by the MedQA-USMLE adapter
   (`sha256(question + sorted_choices + answer)[:12]`).

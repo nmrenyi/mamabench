@@ -9,6 +9,13 @@ Only scorable single-answer rows are normalized. Two load-time filters apply:
   the "wrong" letter would be marked wrong) and are skipped.
 
 The skip counts are preserved in the manifest's source-dataset `filter` block.
+
+One row-level normalization is also applied: when at least two choices in a row
+begin with their own position letter as a prefix (e.g. the choice at letter B
+is the literal string ``"B. Hyperinsulinemia"``), the embedded prefix is
+stripped from every matching choice. This cleans up an upstream extraction
+quirk where the inner letter labels were not removed when the outer
+``A. ... | B. ...`` markers were added.
 """
 
 from __future__ import annotations
@@ -186,6 +193,7 @@ def normalize_afrimedqa_row(
     question = _required_text(row, "question_clean", row_number)
     correct_letter = _required_text(row, "correct_letter", row_number).upper()
     choices_by_letter = parse_options(row.get("options_formatted", ""), row_number)
+    choices_by_letter = _strip_embedded_position_prefixes(choices_by_letter)
 
     if correct_letter not in choices_by_letter:
         raise AfriMedQAAdapterError(
@@ -242,6 +250,39 @@ def _has_ambiguous_answer_position(choices: list[str], answer_index: int) -> boo
     # right text via the "wrong" letter is incorrectly marked wrong, so the row
     # is unscorable as MCQ.
     return choices.count(choices[answer_index]) > 1
+
+
+def _strip_embedded_position_prefixes(
+    choices_by_letter: dict[str, str],
+) -> dict[str, str]:
+    # Upstream sometimes leaves the per-choice letter prefix inside the option
+    # text (e.g. choice at letter B is "B. Hyperinsulinemia"), so the rendered
+    # MCQ ends up with doubled labels. Strip only when at least two choices in
+    # the row carry a prefix matching their own position letter, which is the
+    # signal that this is the upstream-format quirk rather than a coincidence.
+    candidates = {
+        letter: _maybe_strip_letter_prefix(text, letter)
+        for letter, text in choices_by_letter.items()
+    }
+    stripped_count = sum(
+        1 for letter, new_text in candidates.items()
+        if new_text != choices_by_letter[letter]
+    )
+    if stripped_count < 2:
+        return choices_by_letter
+    return candidates
+
+
+def _maybe_strip_letter_prefix(text: str, letter: str) -> str:
+    upper = letter.upper()
+    lower = letter.lower()
+    for prefix in (f"{upper}.", f"{upper})", f"{lower}.", f"{lower})"):
+        if text.startswith(prefix):
+            stripped = text[len(prefix):].lstrip()
+            # Refuse strips that would empty the choice; leave the source as-is
+            # so the downstream validator sees the actual malformed input.
+            return stripped if stripped else text
+    return text
 
 
 def _benchmark_id(benchmark_version: str, content_hash: str) -> str:

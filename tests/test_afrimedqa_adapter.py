@@ -223,6 +223,8 @@ class AfriMedQAAdapterTests(unittest.TestCase):
             total_source_rows=10,
             single_answer_rows=8,
             multi_answer_rows_skipped=2,
+            ambiguous_answer_position_rows_skipped=1,
+            kept_rows=7,
         )
 
         metadata = build_afrimedqa_source_metadata(None, filter_stats=stats)
@@ -233,6 +235,8 @@ class AfriMedQAAdapterTests(unittest.TestCase):
                 "total_source_rows": 10,
                 "single_answer_rows": 8,
                 "multi_answer_rows_skipped": 2,
+                "ambiguous_answer_position_rows_skipped": 1,
+                "kept_rows": 7,
             },
         )
 
@@ -247,19 +251,52 @@ class AfriMedQAAdapterTests(unittest.TestCase):
         report = validate_items(rows)
 
         self.assertTrue(report.ok, report.to_dict())
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 5)
 
-    def test_load_fixture_filter_stats_record_multi_answer_skip(self) -> None:
+    def test_load_fixture_filter_stats_record_both_skip_kinds(self) -> None:
         _, stats = load_afrimedqa_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)
 
         self.assertEqual(
             stats,
             AfriMedQAFilterStats(
-                total_source_rows=5,
-                single_answer_rows=4,
+                total_source_rows=7,
+                single_answer_rows=6,
                 multi_answer_rows_skipped=1,
+                ambiguous_answer_position_rows_skipped=1,
+                kept_rows=5,
             ),
         )
+
+    def test_load_drops_row_with_answer_text_at_multiple_positions(self) -> None:
+        rows, stats = load_afrimedqa_tsv(
+            FIXTURE, benchmark_version=BENCHMARK_VERSION
+        )
+
+        # The ambiguous fixture row keys on letter A with answer text
+        # "Obstetric ultrasound.", which also appears at position B.
+        for row in rows:
+            answer_text = row["choices"][row["answer_index"]]
+            self.assertEqual(
+                row["choices"].count(answer_text),
+                1,
+                f"row {row['id']} has answer text duplicated in choices",
+            )
+        self.assertEqual(stats.ambiguous_answer_position_rows_skipped, 1)
+
+    def test_load_keeps_benign_duplicate_choice_row(self) -> None:
+        # The benign fixture row has duplicate option text at A and B but the
+        # correct answer at C, so the answer text itself appears only once.
+        rows, _ = load_afrimedqa_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)
+        benign_rows = [
+            row
+            for row in rows
+            if len(row["choices"]) != len(set(row["choices"]))
+        ]
+
+        self.assertEqual(len(benign_rows), 1)
+        benign = benign_rows[0]
+        answer_text = benign["choices"][benign["answer_index"]]
+        self.assertEqual(benign["choices"].count(answer_text), 1)
 
     def test_normalizes_answer_text_index_and_source_answer_key(self) -> None:
         rows, _ = load_afrimedqa_tsv(FIXTURE, benchmark_version=BENCHMARK_VERSION)
@@ -375,9 +412,11 @@ class AfriMedQAAdapterTests(unittest.TestCase):
         )
 
         self.assertEqual(len(rows), 2)
-        # First two source rows are both single-answer, so no multi-answer was scanned.
+        # First two source rows are clean single-answer rows.
         self.assertEqual(stats.total_source_rows, 2)
         self.assertEqual(stats.multi_answer_rows_skipped, 0)
+        self.assertEqual(stats.ambiguous_answer_position_rows_skipped, 0)
+        self.assertEqual(stats.kept_rows, 2)
 
     def test_limit_zero_returns_no_rows(self) -> None:
         rows, stats = load_afrimedqa_tsv(
@@ -388,6 +427,8 @@ class AfriMedQAAdapterTests(unittest.TestCase):
         self.assertEqual(stats.total_source_rows, 0)
         self.assertEqual(stats.single_answer_rows, 0)
         self.assertEqual(stats.multi_answer_rows_skipped, 0)
+        self.assertEqual(stats.ambiguous_answer_position_rows_skipped, 0)
+        self.assertEqual(stats.kept_rows, 0)
 
     def test_negative_limit_fails(self) -> None:
         with self.assertRaisesRegex(
@@ -485,9 +526,11 @@ class AfriMedQAAdapterTests(unittest.TestCase):
             self.assertEqual(
                 block["filter"],
                 {
-                    "total_source_rows": 5,
-                    "single_answer_rows": 4,
+                    "total_source_rows": 7,
+                    "single_answer_rows": 6,
                     "multi_answer_rows_skipped": 1,
+                    "ambiguous_answer_position_rows_skipped": 1,
+                    "kept_rows": 5,
                 },
             )
             self.assertEqual(block["license"], "CC BY-NC-SA 4.0")

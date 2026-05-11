@@ -203,11 +203,22 @@ python3 scripts/adapt_afrimedqa.py \
 
 Adapter behavior:
 
-- multi-answer rows, where `correct_letter` is a comma-separated list such as
-  `A,C,D`, cannot be represented by the v0.3 schema's single `answer_index` and
-  are skipped at load time. The manifest's `source_datasets["AfriMed-QA"]
-  .filter` block records `total_source_rows`, `single_answer_rows`, and
-  `multi_answer_rows_skipped` so this information loss is auditable.
+- two load-time filters apply, both audited in
+  `source_datasets["AfriMed-QA"].filter`:
+  - **multi-answer rows** (`correct_letter` is comma-separated, e.g. `A,C,D`)
+    cannot be represented by the v0.3 schema's single `answer_index` and are
+    skipped.
+  - **ambiguous-answer-position rows**, where the correct answer's option text
+    also appears at another choice position, are unscorable as MCQ (a model
+    picking the right text via the "wrong" letter would be marked wrong) and
+    are skipped. Benign duplicate options, where the answer text appears at
+    exactly one position, are kept.
+
+  The filter block records `total_source_rows`, `single_answer_rows`,
+  `multi_answer_rows_skipped`, `ambiguous_answer_position_rows_skipped`, and
+  `kept_rows`, with the accounting invariants
+  `total = single + multi_skipped` and
+  `single = ambiguous_skipped + kept`.
 - `source.id` and the trailing token of the benchmark `id` are derived from the
   same content hash used by the MedQA-USMLE adapter
   (`sha256(question + sorted_choices + answer)[:12]`).

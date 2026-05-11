@@ -1,9 +1,14 @@
 """Adapter for the filtered AfriMed-QA OBGYN MCQ TSV.
 
-Only single-answer rows are normalized. Rows whose `correct_letter` is
-comma-separated (e.g. `A,C,D`) cannot be represented by the v0.3 schema's
-single `answer_index` and are skipped; the count is preserved in the manifest's
-source-dataset `filter` block.
+Only scorable single-answer rows are normalized. Two load-time filters apply:
+
+- Rows whose `correct_letter` is comma-separated (e.g. `A,C,D`) cannot be
+  represented by the v0.3 schema's single `answer_index` and are skipped.
+- Rows where the correct answer's option text appears at more than one choice
+  position are unscorable in MCQ evaluation (a model picking the right text via
+  the "wrong" letter would be marked wrong) and are skipped.
+
+The skip counts are preserved in the manifest's source-dataset `filter` block.
 """
 
 from __future__ import annotations
@@ -53,17 +58,28 @@ class AfriMedQAAdapterError(ValueError):
 
 @dataclass(frozen=True)
 class AfriMedQAFilterStats:
-    """Outcome of the multi-answer filter applied during loading."""
+    """Outcome of load-time filters.
+
+    Invariants:
+        total_source_rows == single_answer_rows + multi_answer_rows_skipped
+        single_answer_rows == ambiguous_answer_position_rows_skipped + kept_rows
+    """
 
     total_source_rows: int
     single_answer_rows: int
     multi_answer_rows_skipped: int
+    ambiguous_answer_position_rows_skipped: int
+    kept_rows: int
 
     def to_dict(self) -> dict[str, int]:
         return {
             "total_source_rows": self.total_source_rows,
             "single_answer_rows": self.single_answer_rows,
             "multi_answer_rows_skipped": self.multi_answer_rows_skipped,
+            "ambiguous_answer_position_rows_skipped": (
+                self.ambiguous_answer_position_rows_skipped
+            ),
+            "kept_rows": self.kept_rows,
         }
 
 
@@ -105,6 +121,7 @@ def load_afrimedqa_tsv(
     rows: list[dict[str, Any]] = []
     total_scanned = 0
     multi_answer_skipped = 0
+    ambiguous_skipped = 0
 
     with tsv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
@@ -126,18 +143,27 @@ def load_afrimedqa_tsv(
                 multi_answer_skipped += 1
                 continue
 
-            rows.append(
-                normalize_afrimedqa_row(
-                    row,
-                    row_number=row_number,
-                    benchmark_version=benchmark_version,
-                )
+            normalized = normalize_afrimedqa_row(
+                row,
+                row_number=row_number,
+                benchmark_version=benchmark_version,
             )
 
+            if _has_ambiguous_answer_position(
+                normalized["choices"], normalized["answer_index"]
+            ):
+                ambiguous_skipped += 1
+                continue
+
+            rows.append(normalized)
+
+    single_answer_rows = total_scanned - multi_answer_skipped
     stats = AfriMedQAFilterStats(
         total_source_rows=total_scanned,
-        single_answer_rows=len(rows),
+        single_answer_rows=single_answer_rows,
         multi_answer_rows_skipped=multi_answer_skipped,
+        ambiguous_answer_position_rows_skipped=ambiguous_skipped,
+        kept_rows=len(rows),
     )
     return rows, stats
 
@@ -208,6 +234,14 @@ def _required_text(row: Mapping[str, str], field: str, row_number: int) -> str:
 
 def _is_multi_answer(correct_letter_raw: str) -> bool:
     return "," in (correct_letter_raw or "").strip()
+
+
+def _has_ambiguous_answer_position(choices: list[str], answer_index: int) -> bool:
+    # The MCQ task is scored by letter (i.e. choice position). When the correct
+    # answer's text also appears at a different position, a model selecting the
+    # right text via the "wrong" letter is incorrectly marked wrong, so the row
+    # is unscorable as MCQ.
+    return choices.count(choices[answer_index]) > 1
 
 
 def _benchmark_id(benchmark_version: str, content_hash: str) -> str:

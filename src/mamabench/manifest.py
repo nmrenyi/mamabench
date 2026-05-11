@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from mamabench.config import normalize_benchmark_version
 from mamabench.schema import SCHEMA_VERSION
 from mamabench.validate import ValidationReport
+
+
+class ReleaseManifestError(ValueError):
+    """Raised when per-source manifests cannot be aggregated."""
 
 
 def build_manifest(
@@ -35,6 +39,121 @@ def build_manifest(
         "source_datasets": _source_dataset_notes(rows, source_dataset_metadata),
         "validation": _validation_report(validation_report),
     }
+
+
+def build_release_manifest(
+    per_source_manifests: Sequence[Mapping[str, Any]],
+    *,
+    benchmark_version: str,
+    schema_version: str = SCHEMA_VERSION,
+    manifest_paths: Sequence[str] | None = None,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Aggregate per-source manifests into a top-level release manifest.
+
+    Each ``per_source_manifests`` entry must be a manifest produced by
+    :func:`build_manifest` (a single-source artifact summary). The result
+    contains aggregated counts, a per-source breakdown with pointers to the
+    individual manifest files (when ``manifest_paths`` is given), and an
+    overall validation status that is OK only when every per-source manifest
+    is OK.
+
+    Raises :class:`ReleaseManifestError` when the per-source manifests
+    disagree on ``benchmark_version`` or ``schema_version``.
+    """
+
+    expected_version = normalize_benchmark_version(benchmark_version)
+    if manifest_paths is not None and len(manifest_paths) != len(per_source_manifests):
+        raise ReleaseManifestError(
+            "manifest_paths must have the same length as per_source_manifests"
+        )
+
+    aggregated_set_type: Counter[str] = Counter()
+    aggregated_source: Counter[str] = Counter()
+    total_item_count = 0
+    total_error_count = 0
+    all_validations_ok = True
+    sources: dict[str, dict[str, Any]] = {}
+
+    for index, manifest in enumerate(per_source_manifests):
+        _check_release_consistency(manifest, expected_version, schema_version, index)
+
+        for set_type, count in manifest.get("counts_by_set_type", {}).items():
+            aggregated_set_type[set_type] += count
+        for source_dataset, count in manifest.get("counts_by_source_dataset", {}).items():
+            aggregated_source[source_dataset] += count
+
+        total_item_count += manifest.get("total_item_count", 0)
+
+        validation = manifest.get("validation") or {}
+        ok = validation.get("ok")
+        error_count = validation.get("error_count") or 0
+        total_error_count += error_count
+        if ok is False:
+            all_validations_ok = False
+        elif ok is None:
+            all_validations_ok = False
+
+        source_dataset = _primary_source_dataset(manifest, fallback=f"source_{index}")
+        sources[source_dataset] = {
+            "item_count": manifest.get("total_item_count", 0),
+            "validation": {
+                "ok": ok,
+                "item_count": validation.get("item_count"),
+                "error_count": error_count,
+            },
+        }
+        if manifest_paths is not None:
+            sources[source_dataset]["manifest_path"] = manifest_paths[index]
+
+    created = created_at or datetime.now(timezone.utc)
+    return {
+        "benchmark_version": expected_version,
+        "schema_version": schema_version,
+        "created_at": _format_timestamp(created),
+        "total_item_count": total_item_count,
+        "counts_by_set_type": dict(sorted(aggregated_set_type.items())),
+        "counts_by_source_dataset": dict(sorted(aggregated_source.items())),
+        "sources": {key: sources[key] for key in sorted(sources)},
+        "validation": {
+            "ok": all_validations_ok,
+            "total_item_count": total_item_count,
+            "total_error_count": total_error_count,
+            "source_count": len(per_source_manifests),
+        },
+    }
+
+
+def _check_release_consistency(
+    manifest: Mapping[str, Any],
+    expected_version: str,
+    expected_schema_version: str,
+    index: int,
+) -> None:
+    actual_version = manifest.get("benchmark_version")
+    if actual_version != expected_version:
+        raise ReleaseManifestError(
+            f"per_source_manifests[{index}]: benchmark_version "
+            f"{actual_version!r} does not match release version "
+            f"{expected_version!r}"
+        )
+    actual_schema = manifest.get("schema_version")
+    if actual_schema != expected_schema_version:
+        raise ReleaseManifestError(
+            f"per_source_manifests[{index}]: schema_version "
+            f"{actual_schema!r} does not match release schema version "
+            f"{expected_schema_version!r}"
+        )
+
+
+def _primary_source_dataset(
+    manifest: Mapping[str, Any], *, fallback: str
+) -> str:
+    counts = manifest.get("counts_by_source_dataset") or {}
+    if not counts:
+        return fallback
+    # Pick the source dataset with the most rows; ties broken by name.
+    return max(counts.items(), key=lambda item: (item[1], item[0]))[0]
 
 
 def _counts(rows: list[Mapping[str, Any]], field: str) -> dict[str, int]:

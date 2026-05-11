@@ -301,6 +301,27 @@ Generated files for the current AfriMed-QA artifact:
 - `benchmark/v0.1/afrimedqa.jsonl`: normalized benchmark rows.
 - `benchmark/v0.1/manifests/afrimedqa_manifest.json`: artifact summary.
 
+## Build a release manifest
+
+After regenerating the per-source artifacts, aggregate their manifests into a
+single release-level manifest:
+
+```bash
+python3 scripts/build_release_manifest.py \
+  benchmark/v0.1/manifests/medmcqa_manifest.json \
+  benchmark/v0.1/manifests/medqa_usmle_manifest.json \
+  benchmark/v0.1/manifests/afrimedqa_manifest.json \
+  --output benchmark/v0.1/manifests/release_manifest.json
+```
+
+The release manifest sums `counts_by_set_type` and
+`counts_by_source_dataset` across sources, records a `sources` block with
+a pointer (relative to the manifest's directory) to each per-source manifest,
+and reports an aggregate `validation` block whose `ok` is true only when
+every per-source manifest is OK. The command rejects per-source manifests
+that disagree on `benchmark_version` or `schema_version` and exits non-zero
+when any per-source manifest reports validation failures.
+
 ## Run tests
 
 ```bash

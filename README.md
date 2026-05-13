@@ -303,6 +303,57 @@ Generated files for the current AfriMed-QA artifact:
 - `benchmark/v0.1/afrimedqa.jsonl`: normalized benchmark rows.
 - `benchmark/v0.1/manifests/afrimedqa_manifest.json`: artifact summary.
 
+## Filter v0.2 sources with the OBGYN classifier
+
+v0.2 adds open-ended sources (HealthBench, Kenya Clinical Vignettes,
+AfriMed-QA SAQ, Women's Health Benchmark) on top of the v0.1 MCQ track.
+Three of these — HealthBench, Kenya, and a re-filter of MedQA-USMLE —
+need an LLM-based filter that maps each upstream prompt to one of five
+mamabench categories and drops anything outside the OBGYN-adjacent scope.
+
+The classifier prompt lives at `prompts/obgyn_classifier/` (modular,
+mode-specific assembly via `mamabench.prompts.load_classifier_prompt`).
+See `prompts/obgyn_classifier.md` for the rationale, change log, and
+validation plan.
+
+The driver, `scripts/classify_obgyn.py`, sends one row at a time to an
+OpenAI-compatible chat endpoint (vLLM / TGI / SGLang / Ollama) with
+structured `response_format=json_schema` enforcement and the Qwen3+
+`enable_thinking=False` chat-template flag. It supports `--workers N`
+for in-process concurrency and `--shard INDEX COUNT` for cross-job
+sharding on a cluster.
+
+For the EPFL RCP cluster, two helper scripts wrap the runai submission:
+
+- `scripts/submit_classify_obgyn.sh` (local-side) — rsyncs the repo and
+  the source file to `light-scratch`, then `runai submit`s one job per
+  shard.
+- `scripts/run_classify_obgyn_job.sh` (in-pod) — installs vllm/openai,
+  starts `vllm serve`, waits for `/v1/models`, then runs the classifier.
+
+For HealthBench, `scripts/derive_consensus_verdicts.py` filters the
+oss_eval verdicts down to the consensus subset's `prompt_id`s — no
+separate classification run is needed since the prompts overlap entirely.
+
+Validation against Kenya's existing Gemini labels:
+`scripts/compare_kenya_parity.py` runs after a Kenya classification and
+prints overall agreement, per-category P/R, and a 5×5 confusion matrix.
+On the production Qwen3.6-27B-FP8 model the agreement is 86.8%; most
+remaining disagreements are our prompt being correctly stricter about
+the "core medical concept, not patient demographics" rule.
+
+Generated verdict files for v0.2 (Qwen3.6-27B-FP8, prompt v6):
+
+- `benchmark/v0.2/classification_verdicts/kenya.jsonl` — 507 rows
+- `benchmark/v0.2/classification_verdicts/healthbench_oss_eval.jsonl` — 5,000 rows
+- `benchmark/v0.2/classification_verdicts/healthbench_hard.jsonl` — 1,000 rows
+- `benchmark/v0.2/classification_verdicts/healthbench_consensus.jsonl` — 3,671 rows (derived from oss_eval)
+- `benchmark/v0.2/classification_verdicts/medqa_usmle.jsonl` — 14,369 rows
+
+Per-source OBGYN-scope yield (rows with category != NONE): Kenya 60.7%,
+HealthBench oss_eval 23.6%, hard 25.3%, consensus 23.3%, MedQA-USMLE
+29.9%. Total unique OBGYN-scope rows across the v0.2 inputs: ~6,041.
+
 ## Build a release manifest
 
 After regenerating the per-source artifacts, aggregate their manifests into a

@@ -119,10 +119,13 @@ rsync -av "$LOCAL_INPUT" "$SERVER_ROOT/$CLUSTER_INPUT"
 
 echo "Submitting $SHARD_COUNT job(s)..."
 for shard in $(seq 0 $((SHARD_COUNT - 1))); do
+  # Job names allow only lower-case alphanumeric + dashes (Kubernetes/runai
+  # rule). Sanitize the subset before using it in the job name.
+  SUBSET_FOR_JOB="$(echo "$SUBSET" | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-9-')"
   if [[ "$SHARD_COUNT" -gt 1 ]]; then
-    JOB_NAME="${JOB_PREFIX}-${SUBSET}-shard${shard}"
+    JOB_NAME="${JOB_PREFIX}-${SUBSET_FOR_JOB}-shard${shard}"
   else
-    JOB_NAME="${JOB_PREFIX}-${SUBSET}"
+    JOB_NAME="${JOB_PREFIX}-${SUBSET_FOR_JOB}"
   fi
   ssh "$SERVER" "runai delete job '$JOB_NAME' --project '$PROJECT' >/dev/null 2>&1 || true"
 
@@ -167,10 +170,10 @@ echo "Monitor:"
 echo "  ssh $SERVER 'runai list jobs --project $PROJECT'"
 if [[ "$SHARD_COUNT" -gt 1 ]]; then
   for shard in $(seq 0 $((SHARD_COUNT - 1))); do
-    echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SUBSET}-shard${shard} -f --project $PROJECT'"
+    echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SUBSET_FOR_JOB}-shard${shard} -f --project $PROJECT'"
   done
 else
-  echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SUBSET} -f --project $PROJECT'"
+  echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SUBSET_FOR_JOB} -f --project $PROJECT'"
 fi
 echo
 echo "Sync verdicts back when complete:"

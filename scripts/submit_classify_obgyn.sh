@@ -95,9 +95,12 @@ if [[ ! -f "$LOCAL_INPUT" ]]; then
   exit 1
 fi
 
-# Stable cluster path for the source input
+# Stable cluster path for the source input. Sanitize the basename so it
+# survives word-splitting on the remote shell (the ssh+runai env-var path
+# strips quoting) and rsync's remote-target parsing.
 INPUT_BASENAME="$(basename "$LOCAL_INPUT")"
-CLUSTER_INPUT="data/sources/$INPUT_BASENAME"
+INPUT_BASENAME_SAFE="${INPUT_BASENAME// /_}"
+CLUSTER_INPUT="data/sources/$INPUT_BASENAME_SAFE"
 
 echo "Preparing cluster workspace at $SERVER_SCRATCH..."
 ssh "$SERVER" "mkdir -p \
@@ -134,6 +137,7 @@ for shard in $(seq 0 $((SHARD_COUNT - 1))); do
     --project "$PROJECT" \
     --run-as-uid 296712 \
     --run-as-gid 84257 \
+    --backoff-limit 0 \
     -e REPO_DIR="$REPO_DIR" \
     -e SOURCE="$SOURCE" \
     -e SUBSET="$SUBSET" \

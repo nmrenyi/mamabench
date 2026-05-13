@@ -39,10 +39,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mamabench.obgyn_classifier import (  # noqa: E402
+    VERDICT_JSON_SCHEMA,
     ClassifierError,
     classify_row,
     make_openai_completer,
-    vllm_guided_json_extra_body,
 )
 from mamabench.obgyn_sources import (  # noqa: E402
     iter_healthbench,
@@ -177,9 +177,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--guided-json",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Use vLLM's guided_json structured generation. Default: enabled. "
-        "Pass --no-guided-json to disable (e.g. for servers without guided "
-        "decoding support).",
+        help="Enable OpenAI-compatible structured generation (response_format "
+        "with json_schema). Default: enabled. Pass --no-guided-json to disable "
+        "for servers without structured-output support.",
+    )
+    parser.add_argument(
+        "--disable-thinking",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Disable Qwen3+ thinking mode via chat_template_kwargs (default "
+        "enabled). Set to false if you want the model to emit its chain of "
+        "thought before the JSON verdict — this is almost always wasteful for "
+        "a classification task.",
     )
     parser.add_argument(
         "--temperature",
@@ -252,7 +261,8 @@ def main(argv: list[str] | None = None) -> int:
         base_url=args.base_url,
         api_key=args.api_key,
         temperature=args.temperature,
-        extra_body=vllm_guided_json_extra_body() if args.guided_json else None,
+        json_schema=VERDICT_JSON_SCHEMA if args.guided_json else None,
+        disable_thinking=args.disable_thinking,
     )
 
     already_done = load_existing_row_ids(args.output)

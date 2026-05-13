@@ -9,7 +9,6 @@ from mamabench.obgyn_classifier import (
     ClassifierError,
     classify_row,
     parse_verdict,
-    vllm_guided_json_extra_body,
 )
 
 
@@ -103,15 +102,6 @@ class SchemaTests(unittest.TestCase):
         )
         self.assertFalse(VERDICT_JSON_SCHEMA["additionalProperties"])
 
-    def test_vllm_guided_json_uses_default_schema(self) -> None:
-        eb = vllm_guided_json_extra_body()
-        self.assertIn("guided_json", eb)
-        self.assertEqual(eb["guided_json"], VERDICT_JSON_SCHEMA)
-
-    def test_vllm_guided_json_accepts_custom_schema(self) -> None:
-        custom = {"type": "object", "properties": {}}
-        eb = vllm_guided_json_extra_body(custom)
-        self.assertEqual(eb["guided_json"], custom)
 
 
 if __name__ == "__main__":

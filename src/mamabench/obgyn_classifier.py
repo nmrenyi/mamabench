@@ -128,18 +128,36 @@ def make_openai_completer(
     base_url: str | None = None,
     api_key: str = "EMPTY",
     temperature: float = 0.0,
-    response_format: dict | None = None,
+    timeout: float = 300.0,
+    json_schema: dict | None = None,
+    disable_thinking: bool = True,
     extra_body: dict | None = None,
-    timeout: float = 120.0,
 ) -> ChatCompleter:
     """Build a :data:`ChatCompleter` backed by the OpenAI Python SDK.
 
     Works against vLLM / TGI / SGLang / Ollama via their OpenAI-compatible
     endpoints — point ``base_url`` at the server (e.g. ``http://host:8000/v1``).
-    ``response_format`` and ``extra_body`` are passed through unmodified so
-    callers can configure structured generation per their runtime (vLLM uses
-    ``extra_body={"guided_json": schema}``; OpenAI/TGI accept
-    ``response_format={"type": "json_schema", ...}``).
+
+    Structured output:
+
+    - When ``json_schema`` is provided, the request includes
+      ``response_format={"type": "json_schema", ...}`` — this is the
+      OpenAI-standard structured-generation mechanism, supported by vLLM
+      0.10+, TGI, SGLang, and OpenAI itself. The previous ``guided_json``
+      extra_body knob was not honored on vLLM 0.20.2 in our cluster runs,
+      so this is the path we rely on.
+
+    Qwen3+ thinking mode:
+
+    - When ``disable_thinking`` is True (default), the request adds
+      ``extra_body={"chat_template_kwargs": {"enable_thinking": False}}``.
+      Qwen3 / Qwen3.5 / Qwen3.6 default to thinking mode, which produces
+      verbose chain-of-thought before any JSON output and either bloats the
+      response or times out. For a fast classification task we don't want
+      that — disabling thinking gives clean direct JSON.
+
+    ``extra_body`` is merged after the thinking-mode setting, so callers can
+    pass additional vLLM-specific knobs without clobbering it.
     """
     try:
         from openai import OpenAI
@@ -156,20 +174,23 @@ def make_openai_completer(
             "messages": list(messages),
             "temperature": temperature,
         }
-        if response_format is not None:
-            kwargs["response_format"] = response_format
-        if extra_body is not None:
-            kwargs["extra_body"] = extra_body
+        if json_schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "verdict",
+                    "schema": json_schema,
+                    "strict": True,
+                },
+            }
+        merged_extra: dict[str, Any] = {}
+        if disable_thinking:
+            merged_extra["chat_template_kwargs"] = {"enable_thinking": False}
+        if extra_body:
+            merged_extra.update(extra_body)
+        if merged_extra:
+            kwargs["extra_body"] = merged_extra
         response = client.chat.completions.create(**kwargs)
         return response.choices[0].message.content or ""
 
     return complete
-
-
-def vllm_guided_json_extra_body(schema: dict | None = None) -> dict:
-    """Return the ``extra_body`` dict that enables vLLM's guided-JSON mode.
-
-    When ``schema`` is ``None``, the default :data:`VERDICT_JSON_SCHEMA` is
-    used. Pass the result as ``extra_body=`` to :func:`make_openai_completer`.
-    """
-    return {"guided_json": schema if schema is not None else VERDICT_JSON_SCHEMA}

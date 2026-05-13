@@ -23,9 +23,10 @@ removed; the new optional ones only appear on the new set_types.
    They are required only when `set_type == "mcq"` and forbidden on the
    open-ended variants.
 4. **New top-level field**:
-   - `rubrics: list[{criterion_id, points, tags}]` — only on
-     `open_ended_rubric`, and required there. Criterion *text* is stored in
-     a separate side-table (see below).
+   - `rubrics: list[{criterion_id, points}]` — only on
+     `open_ended_rubric`, and required there. Each rubric is just a
+     reference + the per-row weight; criterion *text* and per-criterion
+     metadata (`level`, `axis`) live in a separate side-table (see below).
 5. **`answer`** is required on `mcq` and `open_ended`, optional on
    `open_ended_rubric` (HealthBench Eval / Consensus don't carry a reference
    completion; HealthBench Hard does, but v0.2 still classifies it as
@@ -97,16 +98,8 @@ against (LLM-judge, BLEURT, key-fact recall, etc. — schema-neutral). `choices`
     {"role": "user", "content": "Make a 3-month plan to address my mild postpartum depression. I'm 6 weeks postpartum..."}
   ],
   "rubrics": [
-    {
-      "criterion_id": "ex:abc123def456",
-      "points": 10,
-      "tags": ["level:example", "axis:completeness"]
-    },
-    {
-      "criterion_id": "cluster:context_seeking_enough-context_precise",
-      "points": 5,
-      "tags": ["level:cluster", "axis:context_awareness"]
-    }
+    {"criterion_id": "ex:abc123def456", "points": 10},
+    {"criterion_id": "cluster:context_seeking_enough-context_precise", "points": 5}
   ],
   "source": {
     "dataset": "HealthBench",
@@ -155,9 +148,11 @@ binary-met formula: `score = Σ(points × met) / Σ(max(points, 0))`.
 
 ## The criteria side-table
 
-`open_ended_rubric` rows reference criteria by id; the criterion text lives
-in a per-source side-table to avoid storing the 33 cluster-template strings
-(~1–2 KB each) thousands of times. For HealthBench the side-table is
+`open_ended_rubric` rows reference criteria by id; the criterion text and
+per-criterion metadata live in a per-source side-table — both to avoid
+storing the 33 cluster-template strings (~1–2 KB each) thousands of times,
+and because `axis` and `level` are properties of the criterion itself,
+not of the row that uses it. For HealthBench the side-table is
 `benchmark/v0.2/healthbench_criteria.jsonl`, with one row per unique
 criterion:
 
@@ -169,6 +164,10 @@ criterion:
   "axis": "context_awareness"
 }
 ```
+
+`level` is also derivable from the `criterion_id` prefix (`ex:` for
+example-level, `cluster:` for cluster-template), but is stored explicitly
+so consumers don't have to parse the id.
 
 `criterion_id` schema:
 - Cluster templates: `cluster:<name>` from the upstream `cluster:` tag.

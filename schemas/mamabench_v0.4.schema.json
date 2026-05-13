@@ -75,7 +75,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["criterion_id", "points", "tags"],
+        "required": ["criterion_id", "points"],
         "properties": {
           "criterion_id": {
             "type": "string",
@@ -87,13 +87,6 @@
             "minimum": -10,
             "maximum": 10,
             "not": {"const": 0}
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
           }
         }
       }

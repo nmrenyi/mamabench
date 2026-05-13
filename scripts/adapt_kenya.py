@@ -19,6 +19,7 @@ from mamabench.adapters.kenya import (  # noqa: E402
     build_kenya_source_metadata,
     load_kenya,
 )
+from mamabench.adapters._v0_4_validation import validate_rows  # noqa: E402
 
 
 def _utcnow_iso() -> str:
@@ -96,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         cat = row["source"]["metadata"]["obgyn_classification"]["category"]
         counts_by_category[cat] = counts_by_category.get(cat, 0) + 1
 
+    validation = validate_rows(rows)
+
     manifest = {
         "benchmark_version": args.benchmark_version,
         "schema_version": SCHEMA_VERSION,
@@ -104,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         "counts_by_set_type": {"open_ended": len(rows)},
         "counts_by_source_dataset": {"Kenya-Clinical-Vignettes": len(rows)},
         "counts_by_category": counts_by_category,
+        "validation": validation,
         "filter": {
             "type": "obgyn_classifier_verdict",
             "stats": stats.as_dict(),

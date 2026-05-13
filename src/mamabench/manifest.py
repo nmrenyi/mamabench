@@ -95,7 +95,19 @@ def build_release_manifest(
             all_validations_ok = False
 
         source_dataset = _primary_source_dataset(manifest, fallback=f"source_{index}")
-        sources[source_dataset] = {
+        # When multiple manifests collapse onto the same primary source
+        # dataset (e.g. AfriMed-QA MCQ + AfriMed-QA SAQ), disambiguate using
+        # the manifest filename stem so the second entry doesn't silently
+        # overwrite the first.
+        if source_dataset in sources:
+            if manifest_paths is not None:
+                key = _stem_from_manifest_path(manifest_paths[index])
+            else:
+                key = f"{source_dataset}_{index}"
+        else:
+            key = source_dataset
+        sources[key] = {
+            "source_dataset": source_dataset,
             "item_count": manifest.get("total_item_count", 0),
             "validation": {
                 "ok": ok,
@@ -104,7 +116,7 @@ def build_release_manifest(
             },
         }
         if manifest_paths is not None:
-            sources[source_dataset]["manifest_path"] = manifest_paths[index]
+            sources[key]["manifest_path"] = manifest_paths[index]
 
     created = created_at or datetime.now(timezone.utc)
     return {
@@ -154,6 +166,19 @@ def _primary_source_dataset(
         return fallback
     # Pick the source dataset with the most rows; ties broken by name.
     return max(counts.items(), key=lambda item: (item[1], item[0]))[0]
+
+
+def _stem_from_manifest_path(manifest_path: str) -> str:
+    """Strip directory + ``_manifest.json`` from a manifest path for use as a key.
+
+    e.g. ``"manifests/afrimedqa_saq_manifest.json"`` → ``"afrimedqa_saq"``.
+    """
+    from pathlib import Path
+
+    name = Path(manifest_path).stem
+    if name.endswith("_manifest"):
+        name = name[: -len("_manifest")]
+    return name
 
 
 def _counts(rows: list[Mapping[str, Any]], field: str) -> dict[str, int]:

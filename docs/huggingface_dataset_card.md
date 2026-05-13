@@ -32,11 +32,6 @@ source_datasets:
 - extended|openai/healthbench
 - extended|TheLumos/WHB_subset
 configs:
-- config_name: default
-  default: true
-  data_files:
-  - split: test
-    path: data/*.jsonl
 - config_name: medmcqa
   data_files:
   - split: test
@@ -103,7 +98,7 @@ This release adds two new evaluation tracks on top of v0.1's multiple-choice MCQ
 | **HealthBench `hard`** (OBGYN subset, **new**) | open_ended_rubric | 253 | MIT | HealthBench's frontier-model stress test, filtered to mamabench scope |
 | **Total** | | **25,997** | mixed — see below | |
 
-Plus a non-row side-file: **`data/healthbench_criteria.jsonl`** (11,761 unique rubric criteria, mapping `criterion_id` → text + level + axis). Loaded directly, not via `load_dataset`.
+Plus a non-row side-file: **`side_tables/healthbench_criteria.jsonl`** (11,761 unique rubric criteria, mapping `criterion_id` → text + level + axis). It lives outside `data/` so HF's default `data/*.jsonl` config doesn't merge its schema with the benchmark rows. Loaded directly, not via `load_dataset`.
 
 ## License — read this before use
 
@@ -121,13 +116,7 @@ If your use case requires fully permissive licensing (MIT / Apache-2.0 only), fi
 ```python
 from datasets import load_dataset
 
-# Filter at load time:
-ds = load_dataset("nmrenyi/mamabench", revision="v0.2")
-permissive = ds.filter(
-    lambda row: row["source"]["dataset"] not in {"AfriMed-QA", "WHB"}
-)
-
-# Or load only the MIT/Apache configs:
+# Load only the MIT/Apache configs (skip AfriMed-QA / WHB):
 ds_medmcqa = load_dataset("nmrenyi/mamabench", "medmcqa",      revision="v0.2")
 ds_usmle   = load_dataset("nmrenyi/mamabench", "medqa_usmle",  revision="v0.2")
 ds_kenya   = load_dataset("nmrenyi/mamabench", "kenya",        revision="v0.2")
@@ -136,13 +125,12 @@ ds_hb      = load_dataset("nmrenyi/mamabench", "healthbench_oss_eval", revision=
 
 ## Loading
 
+There is **no default config** for v0.2 — `set_type`-conditional fields (`choices`, `rubrics`, etc.) give the three tracks different row shapes that Apache Arrow can't unify into one table. Specify the config you want.
+
 ```python
 from datasets import load_dataset
 
-# Default config — all 25,997 rows
-ds = load_dataset("nmrenyi/mamabench", revision="v0.2")
-
-# Single source / subset
+# Pick a single source / subset
 ds = load_dataset("nmrenyi/mamabench", "medmcqa",             revision="v0.2")  # 18,508
 ds = load_dataset("nmrenyi/mamabench", "medqa_usmle",         revision="v0.2")  #  4,301
 ds = load_dataset("nmrenyi/mamabench", "afrimedqa",           revision="v0.2")  #    534
@@ -186,7 +174,7 @@ For `set_type == "open_ended_rubric"`:
 
 ## The criteria side-table (HealthBench rubrics)
 
-`open_ended_rubric` rows reference rubric criteria by id; the criterion text and per-criterion metadata live in **`data/healthbench_criteria.jsonl`** (11,761 unique criteria). Each side-table row:
+`open_ended_rubric` rows reference rubric criteria by id; the criterion text and per-criterion metadata live in **`side_tables/healthbench_criteria.jsonl`** (11,761 unique criteria) — outside `data/` so HF's default config doesn't pick it up. Each side-table row:
 
 ```json
 {

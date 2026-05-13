@@ -25,6 +25,7 @@ from mamabench.adapters.medqa_usmle_v2 import (  # noqa: E402
     build_medqa_usmle_v2_source_metadata,
     load_medqa_usmle_v2,
 )
+from mamabench.adapters._v0_4_validation import validate_rows  # noqa: E402
 
 
 def _utcnow_iso() -> str:
@@ -105,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         step = meta.get("meta_info") or "unknown"
         counts_by_step[step] = counts_by_step.get(step, 0) + 1
 
+    validation = validate_rows(rows)
+
     manifest = {
         "benchmark_version": args.benchmark_version,
         "schema_version": SCHEMA_VERSION,
@@ -114,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         "counts_by_source_dataset": {"MedQA-USMLE": len(rows)},
         "counts_by_category": counts_by_category,
         "counts_by_step": counts_by_step,
+        "validation": validation,
         "filter": {
             "type": "obgyn_classifier_verdict",
             "stats": stats.as_dict(),

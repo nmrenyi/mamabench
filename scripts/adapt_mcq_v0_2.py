@@ -38,6 +38,7 @@ from mamabench.adapters.afrimedqa import (  # noqa: E402
     build_afrimedqa_source_metadata,
     load_afrimedqa_tsv,
 )
+from mamabench.adapters._v0_4_validation import validate_rows  # noqa: E402
 
 
 TARGET_SCHEMA_VERSION = "0.4"
@@ -59,26 +60,6 @@ def _write_json(path: Path, obj: dict[str, Any]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         json.dump(obj, handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
-
-
-def _validate_against_v0_4_schema(rows: list[dict[str, Any]]) -> list[str]:
-    """Return validation error messages (empty when all rows valid)."""
-    schema_path = ROOT / "schemas" / "mamabench_v0.4.schema.json"
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    try:
-        import jsonschema  # type: ignore[import-not-found]
-    except ImportError:
-        return [
-            "jsonschema-py not installed; skipping JSON Schema validation "
-            "(install with `pip install jsonschema`)"
-        ]
-    validator = jsonschema.Draft202012Validator(schema)
-    errors: list[str] = []
-    for i, row in enumerate(rows):
-        for err in validator.iter_errors(row):
-            errors.append(f"row {i} (id={row.get('id')}): {err.message[:200]}")
-            break  # only report the first error per row
-    return errors
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -150,11 +131,11 @@ def main(argv: list[str] | None = None) -> int:
     for row in rows:
         row["schema_version"] = TARGET_SCHEMA_VERSION
 
-    validation_errors = _validate_against_v0_4_schema(rows)
-    if validation_errors:
+    validation = validate_rows(rows)
+    if not validation["ok"]:
         print("schema validation errors:", file=sys.stderr)
-        for err in validation_errors[:10]:
-            print(f"  {err}", file=sys.stderr)
+        for issue in validation["issues"][:10]:
+            print(f"  row {issue['line_number']} id={issue['item_id']}: {issue['message']}", file=sys.stderr)
         return 1
 
     _write_jsonl(output_path, rows)
@@ -166,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         "total_item_count": len(rows),
         "counts_by_set_type": {"mcq": len(rows)},
         "counts_by_source_dataset": {source_dataset_name: len(rows)},
+        "validation": validation,
         "filter": {"type": "structural-upstream"},
         "source_datasets": source_metadata,
         "outputs": {"rows": str(output_path)},

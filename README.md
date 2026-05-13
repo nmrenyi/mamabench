@@ -303,6 +303,48 @@ Generated files for the current AfriMed-QA artifact:
 - `benchmark/v0.1/afrimedqa.jsonl`: normalized benchmark rows.
 - `benchmark/v0.1/manifests/afrimedqa_manifest.json`: artifact summary.
 
+## Build v0.2 source artifacts
+
+Each v0.2 source has its own adapter under `scripts/adapt_*.py` that
+reads from the upstream files in `~/Downloads/obgyn-qa-collection/` and
+`~/Downloads/healthbench/`, applies the OBGYN classifier verdict filter
+where applicable (see next section), and emits a v0.4 JSONL plus a
+per-source manifest under `benchmark/v0.2/`. Each adapter validates its
+output rows against `schemas/mamabench_v0.4.schema.json` (via
+`jsonschema-py`) before writing.
+
+| Script | Source | Set type | Rows | Filter |
+|---|---|---|---|---|
+| `adapt_mcq_v0_2.py --source medmcqa` | MedMCQA | mcq | 18,508 | structural (upstream) |
+| `adapt_mcq_v0_2.py --source afrimedqa` | AfriMed-QA MCQ | mcq | 534 | structural (upstream) |
+| `adapt_medqa_usmle_v2.py` | MedQA-USMLE (refilter) | mcq | 4,301 | OBGYN classifier verdicts |
+| `adapt_afrimedqa_saq.py` | AfriMed-QA SAQ | open_ended | 37 | structural (upstream) |
+| `adapt_kenya.py` | Kenya Clinical Vignettes | open_ended | 308 | OBGYN classifier verdicts |
+| `adapt_whb.py` | WHB stumps | open_ended | 20 | none (all in scope) |
+| `adapt_healthbench.py` | HealthBench (oss_eval + consensus + hard) | open_ended_rubric | 2,289 | OBGYN classifier verdicts |
+
+The HealthBench adapter also writes
+`benchmark/v0.2/healthbench_criteria.jsonl` (11,761 unique rubric criteria
+with text + level + axis) as a side-table; benchmark rows reference its
+entries by `criterion_id`.
+
+After the per-source adapters run, build the release manifest
+(see [Build a release manifest](#build-a-release-manifest)). Total v0.2
+artifact: **25,997 rows** across 7 sources and 3 set_types.
+
+`adapt_mcq_v0_2.py` re-emits MedMCQA and AfriMed-MCQ with no content
+change vs v0.1 — just bumps `benchmark_version` to `v0.2` and
+`schema_version` to `"0.4"`. The v0.1 adapter scripts
+(`adapt_medmcqa.py`, `adapt_afrimedqa.py`) stay intact for
+retro-rebuilding the published v0.1 release.
+
+The MedQA-USMLE v0.2 row set **differs** from v0.1: v0.1 used a 1,025-row
+pre-filtered TSV from an earlier Gemini classifier; v0.2 refilters from
+the upstream raw 14,369-row `US_qbank.jsonl` (yielding 4,301 OBGYN-scope
+rows) using the unified classifier prompt. Release note in
+`benchmark/v0.2/manifests/medqa_usmle_manifest.json` documents the
+change.
+
 ## Filter v0.2 sources with the OBGYN classifier
 
 v0.2 adds open-ended sources (HealthBench, Kenya Clinical Vignettes,

@@ -38,6 +38,7 @@ from mamabench.adapters.healthbench import (  # noqa: E402
     build_healthbench_source_metadata,
     load_healthbench_subset,
 )
+from mamabench.adapters._v0_4_validation import validate_rows  # noqa: E402
 
 
 def _utcnow_iso() -> str:
@@ -173,6 +174,9 @@ def main(argv: list[str] | None = None) -> int:
             cat = row["source"]["metadata"]["obgyn_classification"]["category"]
             counts_by_category[cat] = counts_by_category.get(cat, 0) + 1
 
+    all_rows = [row for rows in rows_by_subset.values() for row in rows]
+    validation = validate_rows(all_rows)
+
     manifest = {
         "benchmark_version": args.benchmark_version,
         "schema_version": SCHEMA_VERSION,
@@ -182,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         "counts_by_source_dataset": {"HealthBench": total_item_count},
         "counts_by_subset": counts_by_subset,
         "counts_by_category": counts_by_category,
+        "validation": validation,
         "rubric_stats": {
             "total_rubric_items": total_rubric_items,
             "unique_criteria": len(criteria_index.rows()),

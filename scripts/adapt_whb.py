@@ -19,6 +19,7 @@ from mamabench.adapters.whb import (  # noqa: E402
     build_whb_source_metadata,
     load_whb,
 )
+from mamabench.adapters._v0_4_validation import validate_rows  # noqa: E402
 
 
 def _utcnow_iso() -> str:
@@ -78,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     _write_jsonl(args.output, rows)
+    validation = validate_rows(rows)
     manifest = {
         "benchmark_version": args.benchmark_version,
         "schema_version": SCHEMA_VERSION,
@@ -85,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         "total_item_count": len(rows),
         "counts_by_set_type": {"open_ended": len(rows)},
         "counts_by_source_dataset": {"WHB": len(rows)},
+        "validation": validation,
         "filter": {"type": "upstream-curated", "stats": stats.as_dict()},
         "source_datasets": build_whb_source_metadata(),
         "outputs": {"rows": str(args.output)},

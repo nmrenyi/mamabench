@@ -14,8 +14,10 @@ Example:
         --source healthbench --subset oss_eval --mode openended \\
         --input  ~/Downloads/healthbench/data/2025-05-07-06-14-12_oss_eval.jsonl \\
         --output benchmark/v0.2/classification_verdicts/healthbench_oss_eval.jsonl \\
-        --model  Qwen/Qwen2.5-72B-Instruct \\
-        --guided-json
+        --model  Qwen/Qwen2.5-72B-Instruct
+
+Guided JSON structured generation is enabled by default; pass --no-guided-json
+to disable if your server doesn't support it.
 """
 
 from __future__ import annotations
@@ -130,9 +132,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--guided-json",
-        action="store_true",
-        help="Use vLLM's guided_json structured generation. Strongly "
-        "recommended for smaller open-source models.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use vLLM's guided_json structured generation. Default: enabled. "
+        "Pass --no-guided-json to disable (e.g. for servers without guided "
+        "decoding support).",
     )
     parser.add_argument(
         "--temperature",

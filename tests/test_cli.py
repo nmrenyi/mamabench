@@ -45,6 +45,14 @@ class CliHelpTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.code, 0)
 
+    def test_adapt_healthbench_help_exits_cleanly(self) -> None:
+        module = load_script("adapt_healthbench.py")
+        with self.assertRaises(SystemExit) as exc, contextlib.redirect_stdout(
+            io.StringIO()
+        ):
+            module.main(["--help"])
+        self.assertEqual(exc.exception.code, 0)
+
     def _assert_help_skips_config(self, script_name: str) -> None:
         module = load_script(script_name)
         module.load_project_config = self.fail_if_config_loads

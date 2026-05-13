@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/mamabench/schemas/mamabench_v0.4.schema.json",
+  "title": "mamabench v0.4 item",
+  "$comment": "Row structure only. Per-set_type semantic invariants (answer == choices[answer_index] for MCQ, criterion_id refs resolve in the side-table, etc.) live in scripts/validate_mamabench.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "schema_version",
+    "set_type",
+    "question",
+    "source"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "schema_version": {
+      "const": "0.4"
+    },
+    "set_type": {
+      "enum": ["mcq", "open_ended", "open_ended_rubric"]
+    },
+    "question": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "content"],
+            "properties": {
+              "role": {
+                "enum": ["user", "assistant", "system"]
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "choices": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "answer": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "answer_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rubrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion_id", "points", "tags"],
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "points": {
+            "type": "integer",
+            "minimum": -10,
+            "maximum": 10,
+            "not": {"const": 0}
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "canary": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset", "id"],
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "id": {
+          "anyOf": [
+            {"type": "string", "minLength": 1, "pattern": "\\S"},
+            {"type": "null"}
+          ]
+        },
+        "answer": {
+          "anyOf": [
+            {"type": "string", "minLength": 1, "pattern": "\\S"},
+            {"type": "integer"},
+            {"type": "null"}
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"set_type": {"const": "mcq"}}, "required": ["set_type"]},
+      "then": {
+        "required": ["choices", "answer", "answer_index"],
+        "properties": {
+          "question": {"type": "string"}
+        },
+        "not": {
+          "anyOf": [
+            {"required": ["rubrics"]},
+            {"required": ["canary"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"set_type": {"const": "open_ended"}}, "required": ["set_type"]},
+      "then": {
+        "required": ["answer"],
+        "not": {
+          "anyOf": [
+            {"required": ["choices"]},
+            {"required": ["answer_index"]},
+            {"required": ["rubrics"]},
+            {"required": ["canary"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"set_type": {"const": "open_ended_rubric"}}, "required": ["set_type"]},
+      "then": {
+        "required": ["rubrics", "canary"],
+        "not": {
+          "anyOf": [
+            {"required": ["choices"]},
+            {"required": ["answer_index"]}
+          ]
+        }
+      }
+    }
+  ]
+}

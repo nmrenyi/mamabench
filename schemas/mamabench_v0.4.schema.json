@@ -98,11 +98,6 @@
         }
       }
     },
-    "canary": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "\\S"
-    },
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -140,12 +135,7 @@
         "properties": {
           "question": {"type": "string"}
         },
-        "not": {
-          "anyOf": [
-            {"required": ["rubrics"]},
-            {"required": ["canary"]}
-          ]
-        }
+        "not": {"required": ["rubrics"]}
       }
     },
     {
@@ -156,8 +146,7 @@
           "anyOf": [
             {"required": ["choices"]},
             {"required": ["answer_index"]},
-            {"required": ["rubrics"]},
-            {"required": ["canary"]}
+            {"required": ["rubrics"]}
           ]
         }
       }
@@ -165,7 +154,7 @@
     {
       "if": {"properties": {"set_type": {"const": "open_ended_rubric"}}, "required": ["set_type"]},
       "then": {
-        "required": ["rubrics", "canary"],
+        "required": ["rubrics"],
         "not": {
           "anyOf": [
             {"required": ["choices"]},

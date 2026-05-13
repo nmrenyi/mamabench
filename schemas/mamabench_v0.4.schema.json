@@ -102,10 +102,9 @@
           "pattern": "\\S"
         },
         "id": {
-          "anyOf": [
-            {"type": "string", "minLength": 1, "pattern": "\\S"},
-            {"type": "null"}
-          ]
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
         },
         "answer": {
           "anyOf": [

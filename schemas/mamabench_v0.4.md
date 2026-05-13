@@ -208,7 +208,7 @@ existing v0.3 pattern of keeping dataset-level metadata out of rows.
 | Field | Required | Notes |
 |---|---|---|
 | `source.dataset` | yes | e.g. `"MedMCQA"`, `"HealthBench"`, `"Kenya-Clinical-Vignettes"`. |
-| `source.id` | yes | Upstream row id. May be `null` only when the source has no row identifier. |
+| `source.id` | yes | Upstream row id. Required and non-null. When a source has no native row identifier (e.g., MedQA-USMLE), the adapter synthesises a stable id (e.g., `usmle_NNNNN`) from the source-order index. |
 | `source.answer` | no | Upstream answer key (e.g. `"A"` for MedMCQA). Audit only — scorers use top-level `answer`. |
 | `source.metadata` | no | Source-specific provenance bag (themes, subset labels, classifier verdicts, etc.). |
 

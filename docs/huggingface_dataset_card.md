@@ -9,15 +9,19 @@ size_categories:
 task_categories:
 - question-answering
 - multiple-choice
+- text-generation
 tags:
 - medical
 - mcq
+- open-ended
+- rubric-evaluation
 - obgyn
 - obstetrics
 - gynecology
 - pediatrics
 - reproductive-health
 - maternal-health
+- neonatal-health
 - africa
 - benchmark
 - evaluation
@@ -25,6 +29,8 @@ source_datasets:
 - extended|openlifescienceai/medmcqa
 - extended|jind11/MedQA
 - extended|intronhealth/afrimedqa_v2
+- extended|openai/healthbench
+- extended|TheLumos/WHB_subset
 configs:
 - config_name: default
   default: true
@@ -43,47 +49,89 @@ configs:
   data_files:
   - split: test
     path: data/afrimedqa.jsonl
+- config_name: afrimedqa_saq
+  data_files:
+  - split: test
+    path: data/afrimedqa_saq.jsonl
+- config_name: kenya
+  data_files:
+  - split: test
+    path: data/kenya.jsonl
+- config_name: whb
+  data_files:
+  - split: test
+    path: data/whb.jsonl
+- config_name: healthbench_oss_eval
+  data_files:
+  - split: test
+    path: data/healthbench_oss_eval.jsonl
+- config_name: healthbench_consensus
+  data_files:
+  - split: test
+    path: data/healthbench_consensus.jsonl
+- config_name: healthbench_hard
+  data_files:
+  - split: test
+    path: data/healthbench_hard.jsonl
 ---
 
 # mamabench
 
-[GitHub](https://github.com/nmrenyi/mamabench) · 20,067 single-answer MCQ rows · schema `v0.3` · release `v0.1`
+[GitHub](https://github.com/nmrenyi/mamabench) · 25,997 normalized rows · schema `v0.4` · release `v0.2`
 
 A normalized OBGYN / pediatrics / reproductive-health benchmark for evaluating end-to-end medical question-answering systems. Originally built to evaluate **MAMAI**, a Gemma 4 E4B + RAG medical-advice chatbot for nurses and midwives in Zanzibar.
 
-## Release `v0.1`
+## Release `v0.2`
 
-This release covers the **multiple-choice track**: 20,067 single-answer MCQs sourced from three publicly-available medical QA benchmarks, filtered to OBGYN / pediatrics / reproductive-health, normalized to a minimal canonical schema, and end-to-end validated. Planned future releases will add open-ended and safety-focused tracks.
+This release adds two new evaluation tracks on top of v0.1's multiple-choice MCQ track:
+
+- **Open-ended QA with a reference answer** (`set_type: "open_ended"`) — free-text questions with an expert-written reference response, evaluated by LLM-as-judge or similar reference-aware scorers.
+- **Open-ended QA with physician-written rubrics** (`set_type: "open_ended_rubric"`) — HealthBench's evaluation paradigm: each row carries a list of weighted physician-written rubric criteria; a judge LLM scores the model's response against the criteria using HealthBench's weighted-met formula.
 
 ### At a glance
 
-| Source | Rows | License | Notes |
-|---|---|---|---|
-| MedMCQA (OBGYN + Pediatrics subset) | 18,508 | Apache-2.0 | Indian AIIMS / NEET PG entrance exams |
-| MedQA-USMLE (OBGYN subset) | 1,025 | MIT | USMLE-style board questions |
-| AfriMed-QA (OBGYN single-answer) | 534 | **CC BY-NC-SA 4.0 (non-commercial)** | Pan-African expert exam questions |
-| **Total** | **20,067** | mixed — see below | |
+| Source | Set type | Rows | License | Notes |
+|---|---|---|---|---|
+| **MedMCQA** (OBGYN + Pediatrics subset) | mcq | 18,508 | Apache-2.0 | Indian AIIMS / NEET PG entrance exams; unchanged from v0.1 |
+| **MedQA-USMLE** (OBGYN subset, **refiltered**) | mcq | 4,301 | MIT | USMLE board questions; **row set differs from v0.1** — refiltered from the full upstream JSONL using the unified OBGYN classifier |
+| **AfriMed-QA MCQ** (OBGYN subset) | mcq | 534 | **CC BY-NC-SA 4.0** | Pan-African expert exam questions; unchanged from v0.1 |
+| **AfriMed-QA SAQ** (OBGYN subset, **new**) | open_ended | 37 | **CC BY-NC-SA 4.0** | Pan-African expert short-answer questions with reference rationales |
+| **Kenya Clinical Vignettes** (**new**) | open_ended | 308 | MIT | 507 nurse-written maternal/neonatal/child/SRH primary-care scenarios with Kenyan-clinician references, filtered to mamabench scope |
+| **WHB stumps** (**new**) | open_ended | 20 | **CC BY-SA 4.0** | Women's Health Benchmark expert-crafted "model stumps" — clinical prompts paired with expert justifications |
+| **HealthBench `oss_eval`** (OBGYN subset, **new**) | open_ended_rubric | 1,179 | MIT | OpenAI's HealthBench main evaluation, filtered to mamabench scope; physician-written rubrics |
+| **HealthBench `consensus`** (OBGYN subset, **new**) | open_ended_rubric | 857 | MIT | HealthBench's high-physician-agreement subset (cluster-template rubrics only) |
+| **HealthBench `hard`** (OBGYN subset, **new**) | open_ended_rubric | 253 | MIT | HealthBench's frontier-model stress test, filtered to mamabench scope |
+| **Total** | | **25,997** | mixed — see below | |
+
+Plus a non-row side-file: **`data/healthbench_criteria.jsonl`** (11,761 unique rubric criteria, mapping `criterion_id` → text + level + axis). Loaded directly, not via `load_dataset`.
 
 ## License — read this before use
 
-This dataset combines rows from three sources with different licenses. **Each row's `source.dataset` field identifies its license**; the top-level `license: other` reflects this mix rather than choosing one. There is no umbrella license overriding the per-source licenses.
+This dataset combines rows from five upstream sources with different licenses. **Each row's `source.dataset` field identifies its license**; the top-level `license: other` reflects this mix rather than choosing one. There is no umbrella license overriding the per-source licenses.
 
 - **`source.dataset == "MedMCQA"`** — Apache-2.0. Commercial use OK.
 - **`source.dataset == "MedQA-USMLE"`** — MIT. Commercial use OK.
 - **`source.dataset == "AfriMed-QA"`** — **CC BY-NC-SA 4.0**. Non-commercial use only; derivative works must share-alike.
+- **`source.dataset == "Kenya-Clinical-Vignettes"`** — MIT. Commercial use OK.
+- **`source.dataset == "HealthBench"`** — MIT. Commercial use OK.
+- **`source.dataset == "WHB"`** — **CC BY-SA 4.0**. Commercial use OK but derivative works must share-alike (and attribution).
 
-If your use case requires commercial use, filter out AfriMed-QA rows or load only the permissive subsets:
+If your use case requires fully permissive licensing (MIT / Apache-2.0 only), filter out AfriMed-QA and WHB rows or load only the permissive configs:
 
 ```python
 from datasets import load_dataset
 
-# Option 1: filter at load time
-ds = load_dataset("nmrenyi/mamabench")
-permissive = ds.filter(lambda row: row["source"]["dataset"] != "AfriMed-QA")
+# Filter at load time:
+ds = load_dataset("nmrenyi/mamabench", revision="v0.2")
+permissive = ds.filter(
+    lambda row: row["source"]["dataset"] not in {"AfriMed-QA", "WHB"}
+)
 
-# Option 2: load only the permissive configs
-ds_medmcqa = load_dataset("nmrenyi/mamabench", "medmcqa")        # Apache-2.0
-ds_usmle = load_dataset("nmrenyi/mamabench", "medqa_usmle")      # MIT
+# Or load only the MIT/Apache configs:
+ds_medmcqa = load_dataset("nmrenyi/mamabench", "medmcqa",      revision="v0.2")
+ds_usmle   = load_dataset("nmrenyi/mamabench", "medqa_usmle",  revision="v0.2")
+ds_kenya   = load_dataset("nmrenyi/mamabench", "kenya",        revision="v0.2")
+ds_hb      = load_dataset("nmrenyi/mamabench", "healthbench_oss_eval", revision="v0.2")
 ```
 
 ## Loading
@@ -91,81 +139,140 @@ ds_usmle = load_dataset("nmrenyi/mamabench", "medqa_usmle")      # MIT
 ```python
 from datasets import load_dataset
 
-# All 20,067 rows
-ds = load_dataset("nmrenyi/mamabench")
+# Default config — all 25,997 rows
+ds = load_dataset("nmrenyi/mamabench", revision="v0.2")
 
-# Single source
-ds = load_dataset("nmrenyi/mamabench", "medmcqa")      # 18,508 rows
-ds = load_dataset("nmrenyi/mamabench", "medqa_usmle")  # 1,025 rows
-ds = load_dataset("nmrenyi/mamabench", "afrimedqa")    # 534 rows
-
-# Pin to a specific release for reproducible evaluation
-ds = load_dataset("nmrenyi/mamabench", revision="v0.1")
+# Single source / subset
+ds = load_dataset("nmrenyi/mamabench", "medmcqa",             revision="v0.2")  # 18,508
+ds = load_dataset("nmrenyi/mamabench", "medqa_usmle",         revision="v0.2")  #  4,301
+ds = load_dataset("nmrenyi/mamabench", "afrimedqa",           revision="v0.2")  #    534
+ds = load_dataset("nmrenyi/mamabench", "afrimedqa_saq",       revision="v0.2")  #     37
+ds = load_dataset("nmrenyi/mamabench", "kenya",               revision="v0.2")  #    308
+ds = load_dataset("nmrenyi/mamabench", "whb",                 revision="v0.2")  #     20
+ds = load_dataset("nmrenyi/mamabench", "healthbench_oss_eval", revision="v0.2")  #  1,179
+ds = load_dataset("nmrenyi/mamabench", "healthbench_consensus",revision="v0.2")  #    857
+ds = load_dataset("nmrenyi/mamabench", "healthbench_hard",    revision="v0.2")  #    253
 ```
+
+Pin `revision="v0.2"` for reproducible evaluation.
 
 ## Schema
 
-Each row is a JSON object with the following fields (schema `v0.3`):
+Each row is a JSON object conforming to **schema `v0.4`** (`schemas/mamabench_v0.4.schema.json` on GitHub). v0.4 extends v0.3 with two new `set_type` values; v0.3 MCQ rows are valid v0.4 rows after a one-line `schema_version` bump.
+
+### Common fields (all rows)
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | string | Stable mamabench row id, e.g. `mamabench_v0.1_medmcqa_<source-id-or-hash>` |
-| `schema_version` | string | Always `"0.3"` in this release |
-| `set_type` | string | Always `"mcq"` in this release |
-| `question` | string | The model-facing question |
-| `choices` | list[string] | The model-facing answer options (≥ 2 entries) |
-| `answer` | string | Normalized correct answer text. Always equals `choices[answer_index]` |
-| `answer_index` | int | Zero-based index of the correct choice |
-| `source` | object | `{dataset, id, answer}` for row-level provenance |
+| `id` | string | Stable mamabench row id, e.g. `mamabench_v0.2_<source>_<source-id-or-hash>` |
+| `schema_version` | string | Always `"0.4"` in this release |
+| `set_type` | string | One of `"mcq"`, `"open_ended"`, `"open_ended_rubric"` |
+| `question` | string \| list[message] | The model-facing prompt. String for single-turn; list of `{role, content}` for HealthBench multi-turn |
+| `source` | object | `{dataset, id, answer?, metadata?}` for row-level provenance |
 
-The full schema rationale lives in `schema/mamabench_v0.3.md`; the machine-readable JSON Schema in `schema/mamabench_v0.3.schema.json`.
+### Set-type-conditional fields
+
+For `set_type == "mcq"`:
+- `choices`: list[string] (≥ 2)
+- `answer`: the correct option text — equals `choices[answer_index]`
+- `answer_index`: zero-based integer
+
+For `set_type == "open_ended"`:
+- `answer`: the reference response a downstream evaluator scores model output against
+
+For `set_type == "open_ended_rubric"`:
+- `rubrics`: list of `{criterion_id, points}` — each criterion's full text + `level` + `axis` lives in the criteria side-table
+- HealthBench's dataset-level canary string is recorded in the manifest, not on every row
+
+## The criteria side-table (HealthBench rubrics)
+
+`open_ended_rubric` rows reference rubric criteria by id; the criterion text and per-criterion metadata live in **`data/healthbench_criteria.jsonl`** (11,761 unique criteria). Each side-table row:
+
+```json
+{
+  "criterion_id": "cluster:context_seeking_enough-context_precise",
+  "text": "A non-health professional (\"User\") is conversing with...",
+  "level": "cluster",
+  "axis": "context_awareness"
+}
+```
+
+`criterion_id` format:
+- `cluster:<name>` — one of HealthBench's 33 generic cluster-template criteria (reused across rows).
+- `ex:<hash>` — example-level criterion unique to one row; the `<hash>` is sha256(criterion_text)[:12].
+
+Scoring (HealthBench formula): `score = Σ(points × judge_says_met) / Σ(max(points, 0))`. Negative-point criteria penalise harmful behaviours; the denominator is always > 0 by construction.
 
 ## Per-source provenance and manifests
 
-Each source has its own manifest under `manifests/`:
+The release manifest (`manifests/release_manifest.json`) aggregates all 7 per-source manifests:
 
 - `medmcqa_manifest.json`
-- `medqa_usmle_manifest.json`
-- `afrimedqa_manifest.json`
-- `release_manifest.json` (aggregate across all three)
+- `medqa_usmle_manifest.json` (release note: refilter from upstream)
+- `afrimedqa_manifest.json` (MCQ)
+- `afrimedqa_saq_manifest.json`
+- `kenya_manifest.json`
+- `whb_manifest.json`
+- `healthbench_manifest.json` (covers the 3 HealthBench subsets)
 
-Manifests record the exact `obgyn-qa-collection` commit hash the data was extracted from (so the artifact is reproducible byte-for-byte), the full validation report (0 issues across all three artifacts), license and source URLs, and — for AfriMed-QA — filter counts (multi-answer rows skipped, ambiguous-position rows skipped, embedded-prefix rows cleaned).
+Each per-source manifest records its OBGYN-classifier filter stats (where applicable), per-category counts, source URL / license, and the dataset-level canary string (for HealthBench).
 
-## AfriMed-QA caveats
+## MedQA-USMLE row set differs from v0.1
 
-The AfriMed-QA subset went through more invasive normalization than the other two. Summary:
+The v0.2 MedQA-USMLE config is **not** a superset of the v0.1 row set. v0.1 used a pre-filtered 1,025-row TSV produced by an earlier Gemini classifier; v0.2 refilters from the upstream raw 14,369-row `US_qbank.jsonl` using mamabench's unified Qwen3.6-27B-FP8 OBGYN classifier (broader scope: includes pediatrics + reproductive health alongside OB/GYN strict).
 
-- **660 → 534 rows kept (81% retention).** 112 multi-answer rows were skipped (the v0.3 schema represents single-answer MCQs); 14 rows with ambiguous answer positions were dropped (the correct option's text appeared at multiple choice positions, making them unscorable as MCQ).
-- **27 rows had embedded letter prefixes in their option text** from an upstream extraction quirk; those were stripped in-place so the rendered MCQ doesn't show doubled labels.
-- A handful of remaining rows have cosmetic upstream artifacts that don't affect letter-based scoring. See the [GitHub README's "AfriMed-QA data quality notes"](https://github.com/nmrenyi/mamabench#afrimed-qa-data-quality-notes) for the full breakdown.
+- v0.1 MedQA-USMLE: 1,025 rows
+- v0.2 MedQA-USMLE: 4,301 rows
 
-Upstream data-quality issues we surfaced during construction are tracked at the upstream repo: <https://github.com/nmrenyi/obgyn-qa-collection/issues>.
+To reproduce v0.1's row set, pin `revision="v0.1"`. v0.2 readers should expect the new row count.
+
+## Filtering provenance — `obgyn_classification` verdicts
+
+For sources filtered by mamabench's unified OBGYN classifier (HealthBench, Kenya, MedQA-USMLE refilter), each row carries `source.metadata.obgyn_classification`:
+
+```json
+"obgyn_classification": {
+  "model": "Qwen/Qwen3.6-27B-FP8",
+  "prompt_version": "v6",
+  "category": "MATERNAL",
+  "rationale": "Postpartum depression at 6 weeks postpartum"
+}
+```
+
+`category` is one of `MATERNAL`, `NEONATAL`, `CHILD_HEALTH`, `SEXUAL_AND_REPRODUCTIVE_HEALTH` (rows with `NONE` are filtered out). The classifier prompt is versioned and committed at `prompts/obgyn_classifier/` in the GitHub repo; the same `(model, prompt_version, source row)` triple reproduces the same verdict.
+
+## AfriMed-QA data quality notes (unchanged from v0.1)
+
+The AfriMed-QA MCQ subset went through invasive normalisation during v0.1 to handle multi-answer rows, ambiguous answer positions, and embedded letter prefixes. See the [GitHub README's "AfriMed-QA data quality notes"](https://github.com/nmrenyi/mamabench#afrimed-qa-data-quality-notes) for the full breakdown. The v0.2 AfriMed-MCQ subset uses the same v0.1 rows (just `schema_version` bumped to `0.4`). The new AfriMed-SAQ subset is short-answer questions with clean text.
 
 ## Contamination caveat
 
-MedMCQA and MedQA-USMLE are present in many model pretraining corpora and should be treated as **high contamination risk** for evaluating proprietary or web-trained models. AfriMed-QA is newer and less likely to be in pretraining corpora. The current release does not flag contamination risk per row; consumers should account for this in their evaluation methodology.
+MedMCQA, MedQA-USMLE, and AfriMed-QA are present in many model pretraining corpora and should be treated as **high contamination risk** for evaluating proprietary or web-trained models. HealthBench ships with a built-in canary string for one-grep contamination detection — preserved in the per-source manifest at `manifests/healthbench_manifest.json`'s `source_datasets.HealthBench.canary`. Kenya Clinical Vignettes (2025) and WHB (2025) are newer; less contamination risk but verify against publication dates.
 
 ## Versioning
 
 Releases are git tags on this dataset's HF repo. Pin a version for reproducible evaluation:
 
 ```python
-load_dataset("nmrenyi/mamabench", revision="v0.1")
+load_dataset("nmrenyi/mamabench", revision="v0.2")
 ```
 
-Schema version is tracked independently — every row carries `schema_version` so consumers can detect and adapt to schema changes safely across release versions.
+`benchmark_version` (the release) and `schema_version` (the row shape) are tracked independently. v0.1 used schema `0.3`; v0.2 uses schema `0.4`. Every row carries `schema_version` so consumers can detect and adapt to schema changes safely across releases.
 
 ## Building locally
 
-The pipeline that builds this dataset is open source at <https://github.com/nmrenyi/mamabench>. Per-source adapter scripts, validators, manifest builders, and the release-manifest aggregator are all available. See the GitHub README for full instructions.
+The pipeline that builds this dataset is open source at <https://github.com/nmrenyi/mamabench>. Per-source adapters, the unified OBGYN classifier prompt + LiGHT-cluster submit scripts, manifest builders, and the release-manifest aggregator are all available. See the GitHub README for full instructions.
 
 ## Source datasets
 
 - **MedMCQA** — Pal et al. 2022 ([paper](https://proceedings.mlr.press/v174/pal22a), [HF dataset](https://huggingface.co/datasets/openlifescienceai/medmcqa))
 - **MedQA** — Jin et al. 2020 ([paper](https://arxiv.org/abs/2009.13081), [repo](https://github.com/jind11/MedQA))
 - **AfriMed-QA** — Olatunji et al. 2024 ([paper](https://arxiv.org/abs/2411.15640), [HF dataset](https://huggingface.co/datasets/intronhealth/afrimedqa_v2))
+- **HealthBench** — OpenAI 2025 ([HF dataset](https://huggingface.co/datasets/openai/healthbench))
+- **Kenya Clinical Vignettes** — Mwaniki et al. 2025 ([medRxiv preprint](https://doi.org/10.1101/2025.10.25.25338798))
+- **Women's Health Benchmark (WHB)** — Gruber et al. 2025 ([paper](https://arxiv.org/abs/2512.17028), [HF subset](https://huggingface.co/datasets/TheLumos/WHB_subset))
 
-The OBGYN / pediatrics / reproductive-health filtering was done in [obgyn-qa-collection](https://github.com/nmrenyi/obgyn-qa-collection); mamabench normalizes those pre-filtered outputs into the canonical schema.
+The OBGYN / pediatrics / reproductive-health filtering of MedMCQA / MedQA-USMLE / AfriMed-QA was done in [obgyn-qa-collection](https://github.com/nmrenyi/obgyn-qa-collection); mamabench then refilters MedQA-USMLE (and originally classifies HealthBench / Kenya) using its own unified prompt.
 
 ## Citation
 
@@ -193,5 +300,27 @@ If you use mamabench, please link to this dataset page (<https://huggingface.co/
   author={Olatunji, Tobi and Nimo, Charles and others},
   journal={arXiv preprint arXiv:2411.15640},
   year={2024}
+}
+
+@article{arora2025healthbench,
+  title={HealthBench: Evaluating Large Language Models Towards Improved Human Health},
+  author={Arora, Rahul K. and Wei, Jason and Hicks, Rebecca Soskin and others},
+  year={2025},
+  publisher={OpenAI}
+}
+
+@article{mwaniki2025kenya,
+  title={Benchmarking Large Language Models and Clinicians Using Locally Generated Primary Healthcare Vignettes in Kenya},
+  author={Mwaniki, Paul and others},
+  journal={medRxiv},
+  year={2025},
+  doi={10.1101/2025.10.25.25338798}
+}
+
+@article{gruber2025whb,
+  title={A Women's Health Benchmark for Large Language Models},
+  author={Gruber, Carolina and others},
+  journal={arXiv preprint arXiv:2512.17028},
+  year={2025}
 }
 ```

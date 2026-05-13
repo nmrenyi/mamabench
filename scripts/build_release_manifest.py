@@ -40,6 +40,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--schema-version",
+        default=None,
+        help=(
+            "Schema version this release should match (used to validate that "
+            "every per-source manifest agrees). Default: schema_version from "
+            "mamabench.json. Pass `0.4` for the v0.2 release while "
+            "mamabench.json still points at v0.3."
+        ),
+    )
+    parser.add_argument(
         "--manifest-root",
         default=None,
         help=(
@@ -70,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         release = build_release_manifest(
             per_source_manifests,
             benchmark_version=benchmark_version,
-            schema_version=config.schema_version,
+            schema_version=args.schema_version or config.schema_version,
             manifest_paths=relative_paths,
         )
     except (OSError, ReleaseManifestError, ValueError) as exc:

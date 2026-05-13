@@ -34,6 +34,17 @@ class CliHelpTests(unittest.TestCase):
     def test_summarize_help_does_not_load_project_config(self) -> None:
         self._assert_help_skips_config("summarize_mamabench.py")
 
+    def test_classify_obgyn_help_does_not_init_llm(self) -> None:
+        module = load_script("classify_obgyn.py")
+        module.make_openai_completer = self.fail_if_llm_inits
+
+        with self.assertRaises(SystemExit) as exc, contextlib.redirect_stdout(
+            io.StringIO()
+        ):
+            module.main(["--help"])
+
+        self.assertEqual(exc.exception.code, 0)
+
     def _assert_help_skips_config(self, script_name: str) -> None:
         module = load_script(script_name)
         module.load_project_config = self.fail_if_config_loads
@@ -47,6 +58,9 @@ class CliHelpTests(unittest.TestCase):
 
     def fail_if_config_loads(self, _path: object) -> object:
         self.fail("help should be handled before loading mamabench.json")
+
+    def fail_if_llm_inits(self, *_args: object, **_kwargs: object) -> object:
+        self.fail("help should be handled before initializing the LLM client")
 
 
 if __name__ == "__main__":

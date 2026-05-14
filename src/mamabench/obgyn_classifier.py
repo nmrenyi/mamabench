@@ -191,8 +191,16 @@ def _build_request_kwargs(
     chat_template_kwargs: dict[str, Any] = {}
     if disable_thinking:
         chat_template_kwargs["enable_thinking"] = False
-    elif thinking_budget is not None:
-        chat_template_kwargs["thinking_budget"] = thinking_budget
+    else:
+        # Explicitly set enable_thinking=True. Qwen3+ chat templates default
+        # thinking on when NO chat_template_kwargs are passed, but in some
+        # vLLM versions, passing chat_template_kwargs with only
+        # thinking_budget (no enable_thinking key) is treated as
+        # "explicit kwargs → don't apply defaults" and thinking ends up off.
+        # Setting it explicitly is robust across vLLM versions.
+        chat_template_kwargs["enable_thinking"] = True
+        if thinking_budget is not None:
+            chat_template_kwargs["thinking_budget"] = thinking_budget
     if chat_template_kwargs:
         merged_extra["chat_template_kwargs"] = chat_template_kwargs
     if extra_body:
@@ -325,7 +333,20 @@ def make_openai_completer_with_reasoning(
         response = client.chat.completions.create(**kwargs)
         message = response.choices[0].message
         content = message.content or ""
+        # The OpenAI Python SDK's ChatCompletionMessage strips unknown fields
+        # from its typed model. vLLM returns ``reasoning_content`` as an
+        # extension field, so we have to fish it out of the raw extras. Try
+        # direct attribute access first (some SDK versions expose extras as
+        # attributes), then the Pydantic v2 extras dict, then model_dump.
         reasoning = getattr(message, "reasoning_content", None)
+        if reasoning is None and hasattr(message, "model_extra"):
+            extras = getattr(message, "model_extra", None) or {}
+            reasoning = extras.get("reasoning_content")
+        if reasoning is None:
+            try:
+                reasoning = message.model_dump().get("reasoning_content")
+            except Exception:
+                reasoning = None
         return content, reasoning
 
     return complete

@@ -57,22 +57,34 @@ def _required(row: Mapping[str, str], field: str, row_number: int) -> str:
 
 
 def normalize_whb_row(
-    row: Mapping[str, str], *, row_number: int, benchmark_version: str
+    row: Mapping[str, str],
+    *,
+    row_number: int,
+    benchmark_version: str,
+    key_facts_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build one v0.4 `open_ended` mamabench row from a WHB TSV row."""
+    """Build one v0.4 `open_ended` mamabench row from a WHB TSV row.
+
+    When ``key_facts_metadata`` is provided (loaded from the keyfact
+    extractor side-file by row_id), it is nested under
+    ``source.metadata.key_fact_extraction``.
+    """
     question = _required(row, "question_clean", row_number)
     answer = _required(row, "expert_justification", row_number)
     content_hash = _content_hash(question, answer)
+    source: dict[str, Any] = {
+        "dataset": WHB_SOURCE_DATASET,
+        "id": content_hash,
+    }
+    if key_facts_metadata is not None:
+        source["metadata"] = {"key_fact_extraction": dict(key_facts_metadata)}
     return {
         "id": f"mamabench_{benchmark_version}_whb_{content_hash}",
         "schema_version": SCHEMA_VERSION,
         "set_type": "open_ended",
         "question": question,
         "answer": answer,
-        "source": {
-            "dataset": WHB_SOURCE_DATASET,
-            "id": content_hash,
-        },
+        "source": source,
     }
 
 
@@ -81,10 +93,24 @@ def load_whb(
     *,
     benchmark_version: str,
     limit: int | None = None,
+    keyfacts_path: str | Path | None = None,
 ) -> tuple[list[dict[str, Any]], WHBStats]:
-    """Load WHB TSV and normalize to v0.4 open_ended rows."""
+    """Load WHB TSV and normalize to v0.4 open_ended rows.
+
+    When ``keyfacts_path`` is provided, the keyfact extractor side-file is
+    loaded and each row that matches by id gets ``source.metadata.key_fact_extraction``
+    populated. Rows without a matching keyfact entry are emitted without
+    the field (no error — supports partial extraction state).
+    """
     if limit is not None and limit < 0:
         raise WHBAdapterError("limit must be non-negative")
+
+    keyfacts_by_id: dict[str, dict[str, Any]] = {}
+    if keyfacts_path is not None:
+        # Local import to keep import graph cheap when keyfacts aren't used.
+        from ._keyfact_extraction import load_keyfacts_by_row_id
+
+        keyfacts_by_id = load_keyfacts_by_row_id(keyfacts_path)
 
     path = Path(source_tsv)
     rows: list[dict[str, Any]] = []
@@ -100,11 +126,19 @@ def load_whb(
             )
         for row_number, row in enumerate(reader, start=1):
             stats.total += 1
-            rows.append(
-                normalize_whb_row(
-                    row, row_number=row_number, benchmark_version=benchmark_version
-                )
+            # First pass: get the row's mamabench id so we can look up its key_facts.
+            partial = normalize_whb_row(
+                row, row_number=row_number, benchmark_version=benchmark_version
             )
+            key_facts_metadata = keyfacts_by_id.get(partial["id"])
+            if key_facts_metadata is not None:
+                partial = normalize_whb_row(
+                    row,
+                    row_number=row_number,
+                    benchmark_version=benchmark_version,
+                    key_facts_metadata=key_facts_metadata,
+                )
+            rows.append(partial)
             stats.kept += 1
             if limit is not None and len(rows) >= limit:
                 break

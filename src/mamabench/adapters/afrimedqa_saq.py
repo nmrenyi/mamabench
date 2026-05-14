@@ -61,12 +61,23 @@ def _required(row: Mapping[str, str], field: str, row_number: int) -> str:
 
 
 def normalize_afrimedqa_saq_row(
-    row: Mapping[str, str], *, row_number: int, benchmark_version: str
+    row: Mapping[str, str],
+    *,
+    row_number: int,
+    benchmark_version: str,
+    key_facts_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build one v0.4 `open_ended` mamabench row from an AfriMed-SAQ TSV row."""
+    """Build one v0.4 `open_ended` mamabench row from an AfriMed-SAQ TSV row.
+
+    When ``key_facts_metadata`` is provided, it is nested under
+    ``source.metadata.key_fact_extraction`` alongside the existing subset tag.
+    """
     question = _required(row, "question_clean", row_number)
     answer = _required(row, "answer_rationale", row_number)
     content_hash = _content_hash(question, answer)
+    metadata: dict[str, Any] = {"subset": AFRIMEDQA_SAQ_SUBSET}
+    if key_facts_metadata is not None:
+        metadata["key_fact_extraction"] = dict(key_facts_metadata)
     return {
         "id": f"mamabench_{benchmark_version}_afrimedqa-saq_{content_hash}",
         "schema_version": SCHEMA_VERSION,
@@ -76,7 +87,7 @@ def normalize_afrimedqa_saq_row(
         "source": {
             "dataset": AFRIMEDQA_SAQ_SOURCE_DATASET,
             "id": content_hash,
-            "metadata": {"subset": AFRIMEDQA_SAQ_SUBSET},
+            "metadata": metadata,
         },
     }
 
@@ -86,10 +97,22 @@ def load_afrimedqa_saq(
     *,
     benchmark_version: str,
     limit: int | None = None,
+    keyfacts_path: str | Path | None = None,
 ) -> tuple[list[dict[str, Any]], AfriMedQASAQStats]:
-    """Load AfriMed-SAQ TSV and normalize to v0.4 mamabench rows."""
+    """Load AfriMed-SAQ TSV and normalize to v0.4 mamabench rows.
+
+    When ``keyfacts_path`` is provided, the keyfact extractor side-file is
+    loaded and each row matched by id gets
+    ``source.metadata.key_fact_extraction`` populated.
+    """
     if limit is not None and limit < 0:
         raise AfriMedQASAQAdapterError("limit must be non-negative")
+
+    keyfacts_by_id: dict[str, dict[str, Any]] = {}
+    if keyfacts_path is not None:
+        from ._keyfact_extraction import load_keyfacts_by_row_id
+
+        keyfacts_by_id = load_keyfacts_by_row_id(keyfacts_path)
 
     path = Path(source_tsv)
     rows: list[dict[str, Any]] = []
@@ -105,11 +128,18 @@ def load_afrimedqa_saq(
             )
         for row_number, row in enumerate(reader, start=1):
             stats.total += 1
-            rows.append(
-                normalize_afrimedqa_saq_row(
-                    row, row_number=row_number, benchmark_version=benchmark_version
-                )
+            partial = normalize_afrimedqa_saq_row(
+                row, row_number=row_number, benchmark_version=benchmark_version
             )
+            key_facts_metadata = keyfacts_by_id.get(partial["id"])
+            if key_facts_metadata is not None:
+                partial = normalize_afrimedqa_saq_row(
+                    row,
+                    row_number=row_number,
+                    benchmark_version=benchmark_version,
+                    key_facts_metadata=key_facts_metadata,
+                )
+            rows.append(partial)
             stats.kept += 1
             if limit is not None and len(rows) >= limit:
                 break

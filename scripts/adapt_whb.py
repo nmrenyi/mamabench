@@ -60,6 +60,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--benchmark-version", default="v0.2")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--key-facts",
+        type=Path,
+        default=None,
+        help="Optional path to a keyfact extractor side-file JSONL "
+        "(benchmark/v0.2/key_facts/whb_keyfacts.jsonl). When provided, each "
+        "matched row gets source.metadata.key_fact_extraction populated.",
+    )
     return parser
 
 
@@ -68,11 +76,15 @@ def main(argv: list[str] | None = None) -> int:
     if not args.input.is_file():
         print(f"error: --input not found: {args.input}", file=sys.stderr)
         return 2
+    if args.key_facts is not None and not args.key_facts.is_file():
+        print(f"error: --key-facts not found: {args.key_facts}", file=sys.stderr)
+        return 2
     try:
         rows, stats = load_whb(
             args.input,
             benchmark_version=args.benchmark_version,
             limit=args.limit,
+            keyfacts_path=args.key_facts,
         )
     except (OSError, WHBAdapterError) as exc:
         print(f"error: {exc}", file=sys.stderr)

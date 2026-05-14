@@ -125,14 +125,30 @@ def normalize_kenya_row(
     *,
     verdict: Mapping[str, Any],
     benchmark_version: str,
+    key_facts_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build one v0.4 ``open_ended`` mamabench row from a Kenya source row."""
+    """Build one v0.4 ``open_ended`` mamabench row from a Kenya source row.
+
+    When ``key_facts_metadata`` is provided (loaded from the keyfact extractor
+    side-file by row_id), it is nested under
+    ``source.metadata.key_fact_extraction`` alongside ``obgyn_classification``.
+    """
     scenario = source_row.scenario.strip()
     response = source_row.clinician_response.strip()
     if not scenario:
         raise KenyaAdapterError(f"StudyID {source_row.study_id}: empty scenario")
     if not response:
         raise KenyaAdapterError(f"StudyID {source_row.study_id}: empty clinician_response")
+    metadata: dict[str, Any] = {
+        "obgyn_classification": {
+            "model": verdict.get("model"),
+            "prompt_version": verdict.get("prompt_version"),
+            "category": verdict["category"],
+            "rationale": verdict.get("rationale", ""),
+        },
+    }
+    if key_facts_metadata is not None:
+        metadata["key_fact_extraction"] = dict(key_facts_metadata)
     return {
         "id": f"mamabench_{benchmark_version}_kenya_{source_row.study_id}",
         "schema_version": SCHEMA_VERSION,
@@ -142,14 +158,7 @@ def normalize_kenya_row(
         "source": {
             "dataset": KENYA_SOURCE_DATASET,
             "id": source_row.study_id,
-            "metadata": {
-                "obgyn_classification": {
-                    "model": verdict.get("model"),
-                    "prompt_version": verdict.get("prompt_version"),
-                    "category": verdict["category"],
-                    "rationale": verdict.get("rationale", ""),
-                },
-            },
+            "metadata": metadata,
         },
     }
 
@@ -160,10 +169,22 @@ def load_kenya(
     *,
     benchmark_version: str,
     limit: int | None = None,
+    keyfacts_path: str | Path | None = None,
 ) -> tuple[list[dict[str, Any]], KenyaAdapterStats]:
-    """Walk the Kenya source xlsx, filter by verdict, normalize to v0.4 rows."""
+    """Walk the Kenya source xlsx, filter by verdict, normalize to v0.4 rows.
+
+    When ``keyfacts_path`` is provided, the keyfact extractor side-file is
+    loaded and each row matched by id gets
+    ``source.metadata.key_fact_extraction`` populated.
+    """
     if limit is not None and limit < 0:
         raise KenyaAdapterError("limit must be non-negative")
+
+    keyfacts_by_id: dict[str, dict[str, Any]] = {}
+    if keyfacts_path is not None:
+        from ._keyfact_extraction import load_keyfacts_by_row_id
+
+        keyfacts_by_id = load_keyfacts_by_row_id(keyfacts_path)
 
     verdicts = load_verdicts(verdicts_path)
     stats = KenyaAdapterStats()
@@ -177,9 +198,13 @@ def load_kenya(
         if verdict["category"] == "NONE":
             stats.skipped_none += 1
             continue
+        row_id = f"mamabench_{benchmark_version}_kenya_{source_row.study_id}"
         rows.append(
             normalize_kenya_row(
-                source_row, verdict=verdict, benchmark_version=benchmark_version
+                source_row,
+                verdict=verdict,
+                benchmark_version=benchmark_version,
+                key_facts_metadata=keyfacts_by_id.get(row_id),
             )
         )
         stats.kept += 1

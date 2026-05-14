@@ -25,6 +25,7 @@ verbatim — the structured-output / disable-thinking knobs apply identically.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable
 
 # Per-claim length cap. Matches the value documented in the
@@ -188,3 +189,38 @@ def extract_row(
 # Qwen3.5-397B-A17B-FP8 and Qwen3.6-27B-FP8. Reasoning now lives in the
 # JSON schema as a required string field (see EXTRACTION_JSON_SCHEMA).
 # Callers should use :func:`extract_row` and read ``result["reasoning"]``.
+
+
+def load_keyfacts_by_row_id(
+    keyfacts_path: str | Path,
+) -> dict[str, dict[str, Any]]:
+    """Load a keyfacts side-file JSONL into ``{row_id: extraction_metadata}``.
+
+    Each value contains the per-row scoring-rubric metadata that gets folded
+    into ``source.metadata.key_fact_extraction`` of the open-ended adapter
+    rows: ``{model, prompt_version, summary, key_facts}``. The audit-only
+    ``reasoning`` field stays in the parallel ``*_reasoning.jsonl`` side-file
+    and is *not* surfaced on the row.
+
+    Lines missing ``row_id`` (or with unparseable JSON) are skipped silently.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+    with Path(keyfacts_path).open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            row_id = rec.get("row_id")
+            if not isinstance(row_id, str):
+                continue
+            by_id[row_id] = {
+                "model": rec.get("model"),
+                "prompt_version": rec.get("prompt_version"),
+                "summary": rec.get("summary"),
+                "key_facts": rec.get("key_facts", []),
+            }
+    return by_id

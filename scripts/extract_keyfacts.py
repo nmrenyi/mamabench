@@ -41,9 +41,11 @@ sys.path.insert(0, str(ROOT / "src"))
 from mamabench.adapters._keyfact_extraction import (  # noqa: E402
     EXTRACTION_JSON_SCHEMA,
     ExtractionError,
-    extract_row,
+    extract_row_with_reasoning,
 )
-from mamabench.obgyn_classifier import make_openai_completer  # noqa: E402
+from mamabench.obgyn_classifier import (  # noqa: E402
+    make_openai_completer_with_reasoning,
+)
 from mamabench.prompts import (  # noqa: E402
     KEYFACT_EXTRACTOR_PROMPT_VERSION,
     load_keyfact_extractor_prompt,
@@ -255,18 +257,23 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     system_prompt = load_keyfact_extractor_prompt()
-    # Reasoning is captured as a required field inside the JSON schema (see
-    # EXTRACTION_JSON_SCHEMA). We deliberately disable Qwen3+ thinking mode
-    # for this task: vLLM 0.20.2 cannot expose reasoning_content while
-    # response_format is json_schema (the workaround flag has its own bugs),
-    # and the in-schema reasoning field captures structured CoT instead.
-    complete = make_openai_completer(
+    # Strategy on vLLM 0.20.2 V1: enable Qwen3+ native thinking (model
+    # emits <think>...</think> then JSON), DO NOT pass response_format
+    # json_schema. The reasoning parser (configured at server start with
+    # --reasoning-parser qwen3) splits content vs reasoning_content into
+    # separate response fields. Free-form JSON in content is parsed
+    # manually with parse_extraction (handles code-fence stripping).
+    # See vLLM discussion #15644 — reasoning + response_format is a
+    # V0-only feature in vLLM 0.20.2; we stay on V1 for the perf win.
+    complete = make_openai_completer_with_reasoning(
         model=args.model,
         base_url=args.base_url,
         api_key=args.api_key,
         temperature=args.temperature,
-        json_schema=EXTRACTION_JSON_SCHEMA if args.guided_json else None,
-        disable_thinking=True,
+        json_schema=None,
+        disable_thinking=False,
+        thinking_budget=args.thinking_budget,
+        schema_name="extraction",
     )
 
     reasoning_output_path = reasoning_path_for(args.output)
@@ -299,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def process_row(row_id: str, question: str, reference: str) -> None:
         try:
-            result = extract_row(
+            result, reasoning = extract_row_with_reasoning(
                 complete=complete,
                 system_prompt=system_prompt,
                 question=question,
@@ -330,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
             "row_id": row_id,
             "model": args.model,
             "prompt_version": KEYFACT_EXTRACTOR_PROMPT_VERSION,
-            "reasoning": result["reasoning"],
+            "reasoning": reasoning or "",
         }
         with write_lock:
             # Write reasoning first so the main side-file is the resume key

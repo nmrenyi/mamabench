@@ -12,7 +12,7 @@ from mamabench.prompts import (
 
 class LoadClassifierPromptTests(unittest.TestCase):
     def test_prompt_version_is_pinned(self) -> None:
-        self.assertEqual(PROMPT_VERSION, "v6")
+        self.assertEqual(PROMPT_VERSION, "v8")
 
     def test_openended_assembles_in_expected_order(self) -> None:
         prompt = load_classifier_prompt("openended")

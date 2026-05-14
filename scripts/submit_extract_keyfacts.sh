@@ -68,7 +68,7 @@ done
 MODEL="${MODEL:-Qwen/Qwen3.5-397B-A17B-FP8}"
 WORKERS="${WORKERS:-8}"
 LIMIT="${LIMIT:-}"
-GUIDED_JSON="${GUIDED_JSON:-1}"
+GUIDED_JSON="${GUIDED_JSON:-0}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
 
 # ── vLLM config ───────────────────────────────────────────────────

@@ -40,7 +40,7 @@ GDN_PREFILL_BACKEND="${GDN_PREFILL_BACKEND:-triton}"
 TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-8}"
 WORKERS="${WORKERS:-8}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
-GUIDED_JSON="${GUIDED_JSON:-1}"
+GUIDED_JSON="${GUIDED_JSON:-0}"
 THINKING_BUDGET="${THINKING_BUDGET:-23552}"
 
 # SOURCES is the preferred multi-source variable; SOURCE is kept as a
@@ -124,6 +124,7 @@ vllm serve "$MODEL" \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \
   --tensor-parallel-size "$TENSOR_PARALLEL_SIZE" \
+  --reasoning-parser qwen3 \
   --language-model-only \
   --gdn-prefill-backend "$GDN_PREFILL_BACKEND" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \

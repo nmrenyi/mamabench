@@ -42,7 +42,8 @@ from mamabench.obgyn_classifier import (  # noqa: E402
     VERDICT_JSON_SCHEMA,
     ClassifierError,
     classify_row,
-    make_openai_completer,
+    make_openai_completer_with_reasoning,
+    parse_verdict,
 )
 from mamabench.obgyn_sources import (  # noqa: E402
     iter_healthbench,
@@ -256,13 +257,19 @@ def main(argv: list[str] | None = None) -> int:
     source_iter = SOURCE_ITERATORS[args.source]
 
     system_prompt = load_classifier_prompt(mode)
-    complete = make_openai_completer(
+    # Strategy on vLLM 0.20.2 V1: enable native thinking, no json_schema.
+    # vLLM's --reasoning-parser qwen3 splits content vs reasoning_content,
+    # and parse_verdict handles free-form JSON in content (code-fence
+    # stripping + tolerant validation). See run_classify_obgyn_job.sh for
+    # rationale.
+    complete = make_openai_completer_with_reasoning(
         model=args.model,
         base_url=args.base_url,
         api_key=args.api_key,
         temperature=args.temperature,
         json_schema=VERDICT_JSON_SCHEMA if args.guided_json else None,
         disable_thinking=args.disable_thinking,
+        schema_name="verdict",
     )
 
     already_done = load_existing_row_ids(args.output)
@@ -286,18 +293,25 @@ def main(argv: list[str] | None = None) -> int:
     print(f"about to classify {len(rows_to_process)} rows with {args.workers} workers")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    reasoning_output_path = args.output.with_name(args.output.stem + "_reasoning.jsonl")
+    reasoning_output_path.parent.mkdir(parents=True, exist_ok=True)
 
     write_lock = threading.Lock()
     counts = {"done": 0, "errors": 0}
     t_start = time.time()
 
     def process_row(row_id: str, user_message: str) -> None:
+        # Use the with-reasoning completer so we get back (content, reasoning).
+        # classify_row currently wraps the content-only contract; call
+        # complete + parse_verdict directly here to also capture reasoning_content.
         try:
-            verdict = classify_row(
-                complete=complete,
-                system_prompt=system_prompt,
-                user_message=user_message,
+            content, reasoning = complete(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ]
             )
+            verdict = parse_verdict(content)
         except ClassifierError as e:
             with write_lock:
                 counts["errors"] += 1
@@ -321,7 +335,21 @@ def main(argv: list[str] | None = None) -> int:
             "category": verdict["category"],
             "rationale": verdict["rationale"],
         }
+        reasoning_record = {
+            "row_id": row_id,
+            "source": subset,
+            "model": args.model,
+            "prompt_version": PROMPT_VERSION,
+            "reasoning": reasoning or "",
+        }
         with write_lock:
+            # Write reasoning first so the main verdict file is the resume key
+            # — an interrupted row leaves at most an orphan reasoning record
+            # (harmless: row gets re-classified on resume).
+            reasoning_file.write(
+                json.dumps(reasoning_record, ensure_ascii=False) + "\n"
+            )
+            reasoning_file.flush()
             out_file.write(json.dumps(record, ensure_ascii=False) + "\n")
             out_file.flush()
             counts["done"] += 1
@@ -330,7 +358,8 @@ def main(argv: list[str] | None = None) -> int:
                 rate = counts["done"] / elapsed if elapsed > 0 else 0.0
                 print(f"  classified {counts['done']} rows ({rate:.1f} rows/s)")
 
-    with args.output.open("a", encoding="utf-8") as out_file:
+    with args.output.open("a", encoding="utf-8") as out_file, \
+            reasoning_output_path.open("a", encoding="utf-8") as reasoning_file:
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             futures = [
                 executor.submit(process_row, row_id, msg)
@@ -348,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     if counts["done"]:
         print(f"elapsed: {elapsed:.1f}s ({rate:.1f} rows/s)")
+    print(f"  verdicts:  {args.output}")
+    print(f"  reasoning: {reasoning_output_path}")
 
     return 0 if counts["errors"] == 0 else 1
 

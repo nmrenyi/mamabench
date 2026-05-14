@@ -30,8 +30,12 @@ CATEGORIES: frozenset[str] = frozenset(
 )
 
 
-# JSON Schema for guided / structured generation runtimes (vLLM `guided_json`,
-# TGI `grammar`, OpenAI `response_format=json_schema`, etc.).
+# JSON Schema kept as documentation of the expected output shape. NOT
+# passed as response_format/json_schema on the vLLM request — that path
+# silently disables reasoning_content extraction in vLLM 0.20.2's V1
+# engine. We let the model emit free-form JSON alongside its native
+# <think>...</think> reasoning, then parse content manually
+# (parse_verdict handles code-fence stripping and validation).
 VERDICT_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -90,6 +94,8 @@ def parse_verdict(raw: str) -> dict[str, str]:
 
     Raises :class:`ClassifierError` with a short, debuggable message when the
     raw output cannot be parsed or the parsed verdict fails validation.
+    Native chain-of-thought lives in ``message.reasoning_content`` — *not*
+    in this output.
     """
     text = _strip_code_fence(raw)
     try:

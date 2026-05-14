@@ -182,11 +182,14 @@ class CliWorkersIntegrationTests(unittest.TestCase):
             def fake_completer(_messages):
                 with call_lock:
                     calls["n"] += 1
-                return json.dumps({"category": "MATERNAL", "rationale": "stub verdict"})
+                return (
+                    json.dumps({"category": "MATERNAL", "rationale": "stub verdict"}),
+                    "stub reasoning",
+                )
 
             # Patch make_openai_completer to return our stub
-            original_factory = SCRIPT.make_openai_completer
-            SCRIPT.make_openai_completer = lambda **kwargs: fake_completer
+            original_factory = SCRIPT.make_openai_completer_with_reasoning
+            SCRIPT.make_openai_completer_with_reasoning = lambda **kwargs: fake_completer
             try:
                 rc = SCRIPT.main(
                     [
@@ -199,7 +202,7 @@ class CliWorkersIntegrationTests(unittest.TestCase):
                     ]
                 )
             finally:
-                SCRIPT.make_openai_completer = original_factory
+                SCRIPT.make_openai_completer_with_reasoning = original_factory
 
             self.assertEqual(rc, 0)
             self.assertEqual(calls["n"], 7)
@@ -229,10 +232,13 @@ class CliWorkersIntegrationTests(unittest.TestCase):
             )
 
             def fake_completer(_messages):
-                return json.dumps({"category": "NONE", "rationale": "x"})
+                return (
+                    json.dumps({"category": "NONE", "rationale": "x"}),
+                    "stub reasoning",
+                )
 
-            original_factory = SCRIPT.make_openai_completer
-            SCRIPT.make_openai_completer = lambda **kwargs: fake_completer
+            original_factory = SCRIPT.make_openai_completer_with_reasoning
+            SCRIPT.make_openai_completer_with_reasoning = lambda **kwargs: fake_completer
             try:
                 rc = SCRIPT.main(
                     [
@@ -246,7 +252,7 @@ class CliWorkersIntegrationTests(unittest.TestCase):
                     ]
                 )
             finally:
-                SCRIPT.make_openai_completer = original_factory
+                SCRIPT.make_openai_completer_with_reasoning = original_factory
 
             self.assertEqual(rc, 0)
             written = [json.loads(line) for line in output_path.read_text().splitlines() if line.strip()]
@@ -276,10 +282,13 @@ class CliWorkersIntegrationTests(unittest.TestCase):
             )
 
             def fake_completer(_messages):
-                return json.dumps({"category": "NONE", "rationale": "new"})
+                return (
+                    json.dumps({"category": "NONE", "rationale": "new"}),
+                    "stub reasoning",
+                )
 
-            original_factory = SCRIPT.make_openai_completer
-            SCRIPT.make_openai_completer = lambda **kwargs: fake_completer
+            original_factory = SCRIPT.make_openai_completer_with_reasoning
+            SCRIPT.make_openai_completer_with_reasoning = lambda **kwargs: fake_completer
             try:
                 SCRIPT.main(
                     [
@@ -291,7 +300,7 @@ class CliWorkersIntegrationTests(unittest.TestCase):
                     ]
                 )
             finally:
-                SCRIPT.make_openai_completer = original_factory
+                SCRIPT.make_openai_completer_with_reasoning = original_factory
 
             written = [json.loads(line) for line in output_path.read_text().splitlines() if line.strip()]
             # original 2 + 3 newly classified = 5

@@ -29,7 +29,7 @@ GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 GDN_PREFILL_BACKEND="${GDN_PREFILL_BACKEND:-triton}"
 WORKERS="${WORKERS:-8}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
-GUIDED_JSON="${GUIDED_JSON:-1}"
+GUIDED_JSON="${GUIDED_JSON:-0}"
 
 : "${SOURCE:?ERROR: SOURCE must be set}"
 : "${INPUT_PATH:?ERROR: INPUT_PATH must be set}"
@@ -103,6 +103,11 @@ fi
 echo "Output for this shard: $OUTPUT_FOR_SHARD"
 
 # ── Start vLLM ────────────────────────────────────────────────────
+# --reasoning-parser qwen3 splits Qwen3+'s native <think>...</think> output
+# into the separate `reasoning_content` field. Combined with NO
+# response_format on the client (--guided-json defaults off), this captures
+# native CoT alongside free-form JSON output on V1. See
+# scripts/run_extract_keyfacts_job.sh for the full rationale.
 VLLM_LOG="logs/vllm_classify_${SUBSET}_shard${SHARD_INDEX}.log"
 echo "Starting vLLM with model: $MODEL"
 vllm serve "$MODEL" \
@@ -110,6 +115,7 @@ vllm serve "$MODEL" \
   --port 8000 \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \
+  --reasoning-parser qwen3 \
   --language-model-only \
   --gdn-prefill-backend "$GDN_PREFILL_BACKEND" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \

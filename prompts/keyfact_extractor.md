@@ -44,7 +44,7 @@ Every output `key_fact` must satisfy all five rules below. Claims that violate a
 
 ## Extraction procedure
 
-Apply these three steps in order. Write your work through them in the `reasoning` field of the output — this is your structured chain-of-thought, captured as part of the JSON.
+Apply these three steps in order. Think through each step in your own reasoning before producing the final JSON answer.
 
 ### Step 1 — Read and understand the reference
 
@@ -68,8 +68,6 @@ Take each marked claim and:
 
 Output as many key_facts as the reference's clinical content requires. Do not pad with trivial or elaborative content. Do not truncate to hit a target count.
 
-The `reasoning` field captures Steps 1–3 in your own words: what the reference says, which claims qualify under the hierarchy, and how you atomized compound statements. Keep it natural and concise — this is thinking, not polish.
-
 ## Input format
 
 You will receive one clinical question paired with its expert-written reference response, formatted as:
@@ -90,7 +88,6 @@ Return a single JSON object with this exact shape. Do not include any text outsi
 
 ```
 {
-  "reasoning": "<your step-by-step thinking through the 3-step procedure>",
   "summary": "<1-2 sentence summary of the reference's core clinical message>",
   "key_facts": [
     "<atomic must-cover claim, ≤200 chars>",
@@ -102,13 +99,11 @@ Return a single JSON object with this exact shape. Do not include any text outsi
 
 Constraints:
 
-- `reasoning` is your chain-of-thought through the 3-step extraction procedure. Walk through what the reference says, which claims qualify as must-cover under the hierarchy, and how you atomize compound statements. Write naturally — this is your thinking, not a polished writeup. ≤10,000 characters.
-- `summary` is a single short paragraph describing the reference's core clinical message. Used to verify you read the reference before atomizing.
+- `summary` is a single short paragraph describing the reference's core clinical message.
 - `key_facts` is a list of one or more atomic claims, each satisfying the five quality rules.
 - Output as many `key_facts` as the reference requires — no fixed count, no padding, no truncation.
 - All strings must be plain text. No markdown formatting, no bullet markers, no numbering inside the strings.
-
-The `reasoning` field must come **first** in the JSON output so the model produces the chain-of-thought before committing to the final claims.
+- Return ONLY the JSON object. No prose before or after. No markdown code fences.
 
 ## Examples
 
@@ -135,7 +130,6 @@ e. Offer advice on other forms of contraception with their advantages and disadv
 
 ```json
 {
-  "reasoning": "Step 1: The reference instructs how to counsel a patient whose IUD failed and resulted in pregnancy. Core message: confirm the pregnancy, normalize the symptoms, encourage antenatal care, and discuss alternative contraception. Step 2: All five items (a-e) are explicit counseling actions the clinician should perform — these are level-2 (safe next actions) and level-4 (counseling) content. All five qualify as must-cover because they are the reference's clinical advice in full. Step 3: Each lettered item is already roughly atomic in the reference; I rewrite them as third-person imperative descriptions of what the response should do. The reference contains no URLs or metadata to skip.",
   "summary": "Counsel a patient with an unintended pregnancy on an IUD by confirming the pregnancy, normalizing pregnancy-related symptoms, advising on antenatal care, and discussing alternative contraceptive options.",
   "key_facts": [
     "Informs the patient that she is pregnant",
@@ -170,7 +164,6 @@ Reference response:
 
 ```json
 {
-  "reasoning": "Step 1: The reference is an enumerated list of 8 complications of IUCDs — a structured 'list the X' answer. Core message: catalog the complication types. Step 2: Every numbered item names a distinct complication that an acceptable response would need to mention, so all 8 qualify as must-cover under level-3 (narrow down cause/complication landscape). No items are merely background pathophysiology, so I include all of them. Step 3: Each numbered item is one complication category, sometimes with a subordinate phrase explaining it. I rewrite as 'Identifies <complication> as a complication of IUCDs', preserving the umbrella label rather than splitting subordinate clauses (e.g., 'mood changes, breast tenderness, acne' stay as one claim under 'hormonal side effects' because they're examples, not independent claims).",
   "summary": "Enumerates the complications of intrauterine contraceptive devices, including mechanical (perforation, expulsion, embedment), inflammatory (infection, bleeding, cramping), pregnancy-related, and hormonal side effects.",
   "key_facts": [
     "Identifies uterine perforation as a complication of IUCDs",
@@ -201,7 +194,6 @@ Although this presentation is most likely due to mastitis, it is critically impo
 
 ```json
 {
-  "reasoning": "Step 1: This is a WHB failure-mode reference. It tells me what an acceptable response should NOT miss: while mastitis is the most likely diagnosis, inflammatory breast cancer (IBC) is a critical differential that commonly gets missed. Core message: include IBC in the differential. Step 2: Level-1 content here is the must-not-miss IBC inclusion (safety-critical — diagnostic delay worsens survival). Level-3 content includes how IBC presents and the misdiagnosis pattern. The pubmed URLs are bibliographic and must be skipped. Step 3: I phrase claims positively (what the response should DO) even though the reference is framed defensively (what to NOT miss). 'States mastitis is likely' captures the baseline; 'Includes IBC' captures the failure-mode lesson; remaining claims describe IBC's presentation and the misattribution pattern, each as a separate atomic claim.",
   "summary": "Recognize that breast redness, swelling, and pain in a breastfeeding patient is most likely mastitis but inflammatory breast cancer (IBC) must be considered in the differential, as IBC commonly mimics mastitis and is associated with diagnostic delay.",
   "key_facts": [
     "States that mastitis is the most likely diagnosis for this presentation",

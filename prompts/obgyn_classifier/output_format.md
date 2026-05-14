@@ -9,4 +9,8 @@ Return a single JSON object with this exact shape. Do not include any text outsi
 }
 ```
 
-The rationale must be ≤120 characters and explain WHY this category was chosen, referencing the primary medical concept (not patient demographics).
+Field constraints:
+
+- `category` is exactly one of the five enum values.
+- `rationale` is a one-sentence justification, ≤120 characters, referencing the primary medical concept (not patient demographics).
+- Return ONLY the JSON object. No prose before or after. No markdown code fences.

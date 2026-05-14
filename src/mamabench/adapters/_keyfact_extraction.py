@@ -34,28 +34,18 @@ MAX_CLAIM_LEN = 200
 # Summary length cap. Headroom over "1–2 sentences" to allow the model some
 # flex without producing paragraph-long summaries.
 MAX_SUMMARY_LEN = 500
-# Reasoning length cap. The model writes its chain-of-thought through the
-# 3-step extraction procedure into this field; 10,000 chars (~2,500 tokens)
-# gives ample room for thorough reasoning on a complex multi-paragraph
-# reference without letting reasoning runaway eat the whole context.
-MAX_REASONING_LEN = 10000
 
 
-# JSON Schema for guided / structured generation runtimes (vLLM
-# response_format with json_schema, TGI grammar, etc.). The ``reasoning``
-# field captures the model's chain-of-thought as a structured output
-# field — needed because vLLM 0.20.2 silently disables reasoning_content
-# parsing when response_format is set on a request, even with
-# --reasoning-parser configured. Putting reasoning inside the schema is
-# the only reliable way to capture it without giving up structured output.
+# JSON Schema kept as documentation of the expected output shape. NOT
+# passed as response_format/json_schema on the vLLM request — that path
+# silently disables reasoning_content extraction in vLLM 0.20.2 (V1 engine
+# limitation; the only known fixes are dropping json_schema or switching
+# to the V0 engine). We instead let the model emit free-form JSON
+# alongside its native <think>...</think> reasoning, then parse content
+# manually (parse_extraction handles code-fence stripping and validation).
 EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "reasoning": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": MAX_REASONING_LEN,
-        },
         "summary": {
             "type": "string",
             "minLength": 1,
@@ -71,7 +61,7 @@ EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
             },
         },
     },
-    "required": ["reasoning", "summary", "key_facts"],
+    "required": ["summary", "key_facts"],
     "additionalProperties": False,
 }
 
@@ -101,11 +91,12 @@ def _strip_code_fence(text: str) -> str:
 
 
 def parse_extraction(raw: str) -> dict[str, Any]:
-    """Parse an LLM extraction response.
+    """Parse an LLM extraction response into ``{"summary", "key_facts"}``.
 
-    Returns ``{"reasoning", "summary", "key_facts"}`` on success. Raises
-    :class:`ExtractionError` with a short, debuggable message when the raw
-    output cannot be parsed or the parsed result fails validation.
+    Raises :class:`ExtractionError` with a short, debuggable message when the
+    raw output cannot be parsed or the parsed result fails validation.
+    Native chain-of-thought lives in ``message.reasoning_content`` (captured
+    separately by the with-reasoning completer) — *not* in this output.
     """
     text = _strip_code_fence(raw)
     try:
@@ -120,11 +111,8 @@ def parse_extraction(raw: str) -> dict[str, Any]:
             f"LLM returned non-object JSON ({type(obj).__name__}); "
             f"raw output (first 200 chars): {raw[:200]!r}"
         )
-    reasoning = obj.get("reasoning")
     summary = obj.get("summary")
     key_facts = obj.get("key_facts")
-    if not isinstance(reasoning, str) or not reasoning.strip():
-        raise ExtractionError("reasoning must be a non-empty string")
     if not isinstance(summary, str) or not summary.strip():
         raise ExtractionError("summary must be a non-empty string")
     if not isinstance(key_facts, list) or not key_facts:
@@ -143,11 +131,7 @@ def parse_extraction(raw: str) -> dict[str, Any]:
                 f"key_facts[{i}] exceeds {MAX_CLAIM_LEN} chars (got {len(stripped)})"
             )
         cleaned_facts.append(stripped)
-    return {
-        "reasoning": reasoning.strip(),
-        "summary": summary.strip(),
-        "key_facts": cleaned_facts,
-    }
+    return {"summary": summary.strip(), "key_facts": cleaned_facts}
 
 
 def format_user_message(question: str, reference: str) -> str:
@@ -181,14 +165,31 @@ def extract_row(
     return parse_extraction(raw)
 
 
-# NOTE: an earlier extract_row_with_reasoning variant captured Qwen's
-# native thinking-mode reasoning_content via a separate completer. That
-# path is dead — vLLM 0.20.2 silently suppresses reasoning_content when
-# json_schema is set, and the --structured-outputs-config.enable_in_reasoning
-# flag that's supposed to fix it caused 100% empty content on both
-# Qwen3.5-397B-A17B-FP8 and Qwen3.6-27B-FP8. Reasoning now lives in the
-# JSON schema as a required string field (see EXTRACTION_JSON_SCHEMA).
-# Callers should use :func:`extract_row` and read ``result["reasoning"]``.
+def extract_row_with_reasoning(
+    *,
+    complete: ChatCompleterWithReasoning,
+    system_prompt: str,
+    question: str,
+    reference: str,
+) -> tuple[dict[str, Any], str | None]:
+    """Send one (system, user) chat and return both the parsed extraction
+    and the model's native reasoning_content.
+
+    Returns ``(extraction_dict, reasoning_text_or_None)`` where the dict has
+    ``{summary, key_facts}`` and the reasoning is the model's native
+    <think>...</think> chain-of-thought parsed out by vLLM's
+    ``--reasoning-parser qwen3``. Reasoning is ``None`` when the server
+    isn't configured to parse it or the model isn't a thinking model.
+    """
+    user_message = format_user_message(question, reference)
+    content, reasoning = complete(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+    )
+    extraction = parse_extraction(content)
+    return extraction, reasoning
 
 
 def load_keyfacts_by_row_id(

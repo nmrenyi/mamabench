@@ -64,7 +64,7 @@ OUTPUT_PATH="${OUTPUT_PATH:-benchmark/v0.2/classification_verdicts/${SUBSET}.jso
 MODEL="${MODEL:-Qwen/Qwen3.6-27B-FP8}"
 WORKERS="${WORKERS:-8}"
 LIMIT="${LIMIT:-}"
-GUIDED_JSON="${GUIDED_JSON:-1}"
+GUIDED_JSON="${GUIDED_JSON:-0}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
 
 # ── vLLM config ───────────────────────────────────────────────────

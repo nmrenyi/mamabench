@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-PROMPT_VERSION = "v6"
+PROMPT_VERSION = "v8"
 KEYFACT_EXTRACTOR_PROMPT_VERSION = "v1"
 
 Mode = Literal["openended", "mcq"]

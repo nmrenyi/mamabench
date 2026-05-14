@@ -41,6 +41,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from mamabench.obgyn_classifier import (  # noqa: E402
     VERDICT_JSON_SCHEMA,
     ClassifierError,
+    build_classifier_audit_record,
     classify_row,
     make_openai_completer_with_reasoning,
     parse_verdict,
@@ -258,19 +259,27 @@ def main(argv: list[str] | None = None) -> int:
 
     system_prompt = load_classifier_prompt(mode)
     # Strategy on vLLM 0.20.2 V1: enable native thinking, no json_schema.
-    # vLLM's --reasoning-parser qwen3 splits content vs reasoning_content,
-    # and parse_verdict handles free-form JSON in content (code-fence
-    # stripping + tolerant validation). See run_classify_obgyn_job.sh for
-    # rationale.
+    # vLLM's --reasoning-parser qwen3 splits content vs reasoning (via
+    # message.reasoning in raw HTTP body), and parse_verdict handles
+    # free-form JSON in content (code-fence stripping + tolerant validation).
+    use_json_schema = bool(args.guided_json)
     complete = make_openai_completer_with_reasoning(
         model=args.model,
         base_url=args.base_url,
         api_key=args.api_key,
         temperature=args.temperature,
-        json_schema=VERDICT_JSON_SCHEMA if args.guided_json else None,
+        json_schema=VERDICT_JSON_SCHEMA if use_json_schema else None,
         disable_thinking=args.disable_thinking,
         schema_name="verdict",
     )
+    # Generation params captured per-row in the audit side-file so each
+    # record is independently reproducible.
+    audit_params = {
+        "temperature": args.temperature,
+        "enable_thinking": not args.disable_thinking,
+        "thinking_budget": None,
+        "json_schema": use_json_schema,
+    }
 
     already_done = load_existing_row_ids(args.output)
     if already_done:
@@ -335,13 +344,17 @@ def main(argv: list[str] | None = None) -> int:
             "category": verdict["category"],
             "rationale": verdict["rationale"],
         }
-        reasoning_record = {
-            "row_id": row_id,
-            "source": subset,
-            "model": args.model,
-            "prompt_version": PROMPT_VERSION,
-            "reasoning": reasoning or "",
-        }
+        reasoning_record = build_classifier_audit_record(
+            row_id=row_id,
+            source=subset,
+            model=args.model,
+            prompt_version=PROMPT_VERSION,
+            mode=mode,
+            user_message=user_message,
+            params=audit_params,
+            raw_content=content,
+            reasoning=reasoning,
+        )
         with write_lock:
             # Write reasoning first so the main verdict file is the resume key
             # — an interrupted row leaves at most an orphan reasoning record

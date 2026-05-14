@@ -41,7 +41,9 @@ sys.path.insert(0, str(ROOT / "src"))
 from mamabench.adapters._keyfact_extraction import (  # noqa: E402
     EXTRACTION_JSON_SCHEMA,
     ExtractionError,
-    extract_row_with_reasoning,
+    build_keyfact_audit_record,
+    format_user_message,
+    parse_extraction,
 )
 from mamabench.obgyn_classifier import (  # noqa: E402
     make_openai_completer_with_reasoning,
@@ -259,22 +261,29 @@ def main(argv: list[str] | None = None) -> int:
     system_prompt = load_keyfact_extractor_prompt()
     # Strategy on vLLM 0.20.2 V1: enable Qwen3+ native thinking (model
     # emits <think>...</think> then JSON), DO NOT pass response_format
-    # json_schema. The reasoning parser (configured at server start with
-    # --reasoning-parser qwen3) splits content vs reasoning_content into
+    # json_schema. The reasoning parser splits content vs reasoning into
     # separate response fields. Free-form JSON in content is parsed
-    # manually with parse_extraction (handles code-fence stripping).
-    # See vLLM discussion #15644 — reasoning + response_format is a
-    # V0-only feature in vLLM 0.20.2; we stay on V1 for the perf win.
+    # manually with parse_extraction. See vLLM discussion #15644 —
+    # reasoning + response_format is a V0-only feature in vLLM 0.20.2.
+    use_json_schema = bool(args.guided_json)
     complete = make_openai_completer_with_reasoning(
         model=args.model,
         base_url=args.base_url,
         api_key=args.api_key,
         temperature=args.temperature,
-        json_schema=None,
-        disable_thinking=False,
+        json_schema=EXTRACTION_JSON_SCHEMA if use_json_schema else None,
+        disable_thinking=args.disable_thinking,
         thinking_budget=args.thinking_budget,
         schema_name="extraction",
     )
+    # Generation params captured per-row in the audit side-file so each
+    # record is independently reproducible.
+    audit_params = {
+        "temperature": args.temperature,
+        "enable_thinking": not args.disable_thinking,
+        "thinking_budget": args.thinking_budget if not args.disable_thinking else None,
+        "json_schema": use_json_schema,
+    }
 
     reasoning_output_path = reasoning_path_for(args.output)
     already_done = load_existing_row_ids(args.output)
@@ -305,13 +314,17 @@ def main(argv: list[str] | None = None) -> int:
     t_start = time.time()
 
     def process_row(row_id: str, question: str, reference: str) -> None:
+        # Call the completer directly (rather than via extract_row_with_reasoning)
+        # so we capture the raw content string for the audit side-file.
+        user_message = format_user_message(question, reference)
         try:
-            result, reasoning = extract_row_with_reasoning(
-                complete=complete,
-                system_prompt=system_prompt,
-                question=question,
-                reference=reference,
+            raw_content, reasoning = complete(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ]
             )
+            result = parse_extraction(raw_content)
         except ExtractionError as e:
             with write_lock:
                 counts["errors"] += 1
@@ -333,12 +346,16 @@ def main(argv: list[str] | None = None) -> int:
             "summary": result["summary"],
             "key_facts": result["key_facts"],
         }
-        reasoning_record = {
-            "row_id": row_id,
-            "model": args.model,
-            "prompt_version": KEYFACT_EXTRACTOR_PROMPT_VERSION,
-            "reasoning": reasoning or "",
-        }
+        reasoning_record = build_keyfact_audit_record(
+            row_id=row_id,
+            model=args.model,
+            prompt_version=KEYFACT_EXTRACTOR_PROMPT_VERSION,
+            question=question,
+            reference=reference,
+            params=audit_params,
+            raw_content=raw_content,
+            reasoning=reasoning,
+        )
         with write_lock:
             # Write reasoning first so the main side-file is the resume key
             # — if a crash interrupts a row, the worst case is an orphan

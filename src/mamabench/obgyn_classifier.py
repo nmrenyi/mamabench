@@ -29,6 +29,49 @@ CATEGORIES: frozenset[str] = frozenset(
     {"MATERNAL", "NEONATAL", "CHILD_HEALTH", "SEXUAL_AND_REPRODUCTIVE_HEALTH", "NONE"}
 )
 
+# Pointer used in audit records — resolves to the bundled prompt directory
+# (modular markdown sections) under the HF release's prompts/ directory.
+CLASSIFIER_PROMPT_DIR = "prompts/obgyn_classifier/"
+
+
+def build_classifier_audit_record(
+    *,
+    row_id: str,
+    source: str,
+    model: str,
+    prompt_version: str,
+    mode: str,
+    user_message: str,
+    params: dict[str, Any],
+    raw_content: str,
+    reasoning: str | None,
+) -> dict[str, Any]:
+    """Build the per-row audit/trace record for the classifier reasoning side-file.
+
+    Each row carries everything needed to reproduce or audit the
+    classification: prompt pointer + version, mode (openended / mcq), the
+    full rendered user message, generation params, and the model's raw
+    JSON content alongside its native chain-of-thought reasoning.
+    """
+    return {
+        "row_id": row_id,
+        "source": source,
+        "model": model,
+        "prompt": {
+            "version": prompt_version,
+            "file": CLASSIFIER_PROMPT_DIR,
+            "mode": mode,
+        },
+        "input": {
+            "user_message": user_message,
+        },
+        "params": dict(params),
+        "output": {
+            "content": raw_content,
+            "reasoning": reasoning or "",
+        },
+    }
+
 
 # JSON Schema kept as documentation of the expected output shape. NOT
 # passed as response_format/json_schema on the vLLM request — that path

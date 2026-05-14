@@ -192,6 +192,49 @@ def extract_row_with_reasoning(
     return extraction, reasoning
 
 
+# Pointer used in audit records — resolves to the bundled prompt file under
+# the HF release's prompts/ directory.
+KEYFACT_PROMPT_FILE = "prompts/keyfact_extractor.md"
+
+
+def build_keyfact_audit_record(
+    *,
+    row_id: str,
+    model: str,
+    prompt_version: str,
+    question: str,
+    reference: str,
+    params: dict[str, Any],
+    raw_content: str,
+    reasoning: str | None,
+) -> dict[str, Any]:
+    """Build the per-row audit/trace record for the keyfact reasoning side-file.
+
+    Designed to make each row independently reproducible: the prompt is
+    referenced by version + file path (the file itself ships with the HF
+    release under prompts/), the full user-message inputs are inlined, the
+    generation parameters are captured verbatim, and both the model's raw
+    JSON content and its native chain-of-thought reasoning are stored.
+    """
+    return {
+        "row_id": row_id,
+        "model": model,
+        "prompt": {
+            "version": prompt_version,
+            "file": KEYFACT_PROMPT_FILE,
+        },
+        "input": {
+            "question": question,
+            "reference": reference,
+        },
+        "params": dict(params),
+        "output": {
+            "content": raw_content,
+            "reasoning": reasoning or "",
+        },
+    }
+
+
 def load_keyfacts_by_row_id(
     keyfacts_path: str | Path,
 ) -> dict[str, dict[str, Any]]:

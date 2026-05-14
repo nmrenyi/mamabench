@@ -21,7 +21,7 @@ stub that returns canned JSON strings).
 
 from __future__ import annotations
 
-import json
+import json  # noqa: F401  (used in the raw-response path of make_openai_completer_with_reasoning)
 from typing import Any, Callable, Iterable
 
 
@@ -330,23 +330,20 @@ def make_openai_completer_with_reasoning(
             schema_name=schema_name,
         )
         kwargs["messages"] = list(messages)
-        response = client.chat.completions.create(**kwargs)
-        message = response.choices[0].message
-        content = message.content or ""
-        # The OpenAI Python SDK's ChatCompletionMessage strips unknown fields
-        # from its typed model. vLLM returns ``reasoning_content`` as an
-        # extension field, so we have to fish it out of the raw extras. Try
-        # direct attribute access first (some SDK versions expose extras as
-        # attributes), then the Pydantic v2 extras dict, then model_dump.
-        reasoning = getattr(message, "reasoning_content", None)
-        if reasoning is None and hasattr(message, "model_extra"):
-            extras = getattr(message, "model_extra", None) or {}
-            reasoning = extras.get("reasoning_content")
-        if reasoning is None:
-            try:
-                reasoning = message.model_dump().get("reasoning_content")
-            except Exception:
-                reasoning = None
+        # Bypass the typed ChatCompletionMessage model and read the raw HTTP
+        # response body. vLLM returns `reasoning_content` as an extension
+        # field which the OpenAI Python SDK's typed model strips (it depends
+        # on the SDK version whether unknown fields land in model_extra or
+        # are dropped entirely — neither reliable for our purposes).
+        # with_raw_response gives access to the parsed HTTP response from
+        # which we read the raw JSON. This works regardless of SDK version.
+        http_response = client.chat.completions.with_raw_response.create(**kwargs)
+        data = json.loads(http_response.text)
+        message = data["choices"][0]["message"]
+        content = message.get("content") or ""
+        reasoning = message.get("reasoning_content")
+        if isinstance(reasoning, str) and not reasoning.strip():
+            reasoning = None
         return content, reasoning
 
     return complete

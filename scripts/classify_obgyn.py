@@ -186,11 +186,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--disable-thinking",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Disable Qwen3+ thinking mode via chat_template_kwargs (default "
-        "enabled). Set to false if you want the model to emit its chain of "
-        "thought before the JSON verdict — this is almost always wasteful for "
-        "a classification task.",
+        "OFF — thinking is enabled by default for the classifier so the "
+        "audit side-file captures the model's native chain-of-thought "
+        "alongside the category verdict). Pass --disable-thinking for a "
+        "faster classification-only run without reasoning capture.",
     )
     parser.add_argument(
         "--temperature",

@@ -3,22 +3,28 @@
 #
 # 1. Install/upgrade vllm + openai in user-space.
 # 2. Start vLLM (with tensor parallelism) as an OpenAI-compatible server.
-# 3. Wait for /v1/models to respond.
-# 4. Run scripts/extract_keyfacts.py against the local vLLM endpoint.
-#    The driver appends extraction results to OUTPUT_PATH (suffixed with the
-#    shard index when sharded).
+# 3. Wait until vLLM actually serves a chat completion (not just /v1/models).
+# 4. Loop over $SOURCES (comma-separated; e.g. "whb,afrimedqa_saq,kenya")
+#    and run scripts/extract_keyfacts.py once per source against the same
+#    in-pod vLLM endpoint. Sharing one vLLM warmup across all sources saves
+#    ~40 min of warmup time vs running 3 separate pods.
 # 5. Exit; Run:ai tears down the pod (and vLLM with it).
 #
 # Required env vars:
-#   REPO_DIR, SOURCE, INPUT_PATH, OUTPUT_PATH, MODEL,
-#   SHARD_INDEX, SHARD_COUNT
+#   REPO_DIR, MODEL, SHARD_INDEX, SHARD_COUNT
+#   SOURCES   comma-separated list (preferred), e.g. "whb,afrimedqa_saq,kenya"
+#   SOURCE    single value (legacy / smoke tests); falls back to $SOURCES
+#
+# Per-source paths are derived as:
+#   input  = data/sources/<src>.jsonl   (synced by submit_extract_keyfacts.sh)
+#   output = benchmark/v0.2/key_facts/<src>_keyfacts.jsonl
 #
 # Optional (defaults shown):
 #   WORKERS=8, LIMIT="",
 #   GUIDED_JSON=1, TEMPERATURE=0.0,
 #   MAX_MODEL_LEN=32768, MAX_NUM_SEQS=64,
 #   GPU_MEMORY_UTILIZATION=0.90, GDN_PREFILL_BACKEND=triton,
-#   TENSOR_PARALLEL_SIZE=8
+#   TENSOR_PARALLEL_SIZE=8, THINKING_BUDGET=23552
 
 set -euo pipefail
 
@@ -37,9 +43,13 @@ TEMPERATURE="${TEMPERATURE:-0.0}"
 GUIDED_JSON="${GUIDED_JSON:-1}"
 THINKING_BUDGET="${THINKING_BUDGET:-23552}"
 
-: "${SOURCE:?ERROR: SOURCE must be set}"
-: "${INPUT_PATH:?ERROR: INPUT_PATH must be set}"
-: "${OUTPUT_PATH:?ERROR: OUTPUT_PATH must be set}"
+# SOURCES is the preferred multi-source variable; SOURCE is kept as a
+# single-value fallback for backward compatibility (and smoke tests).
+SOURCES="${SOURCES:-${SOURCE:-}}"
+if [[ -z "$SOURCES" ]]; then
+  echo "ERROR: SOURCES (or SOURCE) must be set" >&2
+  exit 1
+fi
 : "${SHARD_INDEX:?ERROR: SHARD_INDEX must be set}"
 : "${SHARD_COUNT:?ERROR: SHARD_COUNT must be set}"
 
@@ -51,7 +61,7 @@ export PYTHONUSERBASE="${PYTHONUSERBASE:-$REPO_DIR/python_user}"
 export PATH="$PYTHONUSERBASE/bin:$HOME/.local/bin:$PATH"
 
 cd "$REPO_DIR"
-mkdir -p logs data "$HOME" "$HF_HOME" "$PYTHONUSERBASE" "$(dirname "$OUTPUT_PATH")"
+mkdir -p logs data benchmark/v0.2/key_facts "$HOME" "$HF_HOME" "$PYTHONUSERBASE"
 
 # ── Install / upgrade required deps ──────────────────────────────
 python3 - <<'PY'
@@ -95,23 +105,19 @@ else:
     print("All required packages already installed.")
 PY
 
-# ── Compute per-shard output path ────────────────────────────────
-if [[ "$SHARD_COUNT" -gt 1 ]]; then
-  OUTPUT_FOR_SHARD="${OUTPUT_PATH%.jsonl}_shard${SHARD_INDEX}.jsonl"
-else
-  OUTPUT_FOR_SHARD="$OUTPUT_PATH"
-fi
-echo "Output for this shard: $OUTPUT_FOR_SHARD"
-
 # ── Start vLLM ────────────────────────────────────────────────────
 # --reasoning-parser qwen3 makes vLLM parse Qwen3's <think>...</think>
-# output into the separate `reasoning_content` field on the message
-# object. Without it, thinking tokens are inlined into `content` and
-# either break the json_schema response_format constraint or get
-# silently discarded. (Older vLLM versions also required
-# --enable-reasoning; that flag was removed in vLLM 0.8+ — passing
-# --reasoning-parser alone is sufficient.)
-VLLM_LOG="logs/vllm_keyfacts_${SOURCE}_shard${SHARD_INDEX}.log"
+# output into the separate `reasoning_content` field on the message.
+#
+# --structured-outputs-config.enable_in_reasoning=True is the load-bearing
+# flag for reasoning + json_schema together: vLLM defaults to disabling
+# reasoning whenever response_format/json_schema is set on a request, even
+# when --reasoning-parser is configured. That's exactly what bit our first
+# smoke test (StructuredOutputsConfig.enable_in_reasoning=False in the
+# server log). Setting this to True keeps reasoning enabled alongside
+# constrained JSON output. Docs:
+# https://docs.vllm.ai/en/latest/features/structured_outputs/
+VLLM_LOG="logs/vllm_keyfacts_shard${SHARD_INDEX}.log"
 echo "Starting vLLM with model: $MODEL (tensor-parallel-size=$TENSOR_PARALLEL_SIZE)"
 vllm serve "$MODEL" \
   --host 0.0.0.0 \
@@ -120,12 +126,13 @@ vllm serve "$MODEL" \
   --max-num-seqs "$MAX_NUM_SEQS" \
   --tensor-parallel-size "$TENSOR_PARALLEL_SIZE" \
   --reasoning-parser qwen3 \
+  --structured-outputs-config.enable_in_reasoning=True \
   --language-model-only \
   --gdn-prefill-backend "$GDN_PREFILL_BACKEND" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \
   > "$VLLM_LOG" 2>&1 &
 VLLM_PID=$!
-echo "$VLLM_PID" > "logs/vllm_keyfacts_${SOURCE}_shard${SHARD_INDEX}.pid"
+echo "$VLLM_PID" > "logs/vllm_keyfacts_shard${SHARD_INDEX}.pid"
 
 echo "Waiting for vLLM to become ready..."
 # Send a real /v1/chat/completions ping (max_tokens=1, thinking disabled) —
@@ -165,28 +172,74 @@ PY
   sleep 10
 done
 
-# ── Run the extractor ────────────────────────────────────────────
-EXTRACTOR_ARGS=(
-  --input "$INPUT_PATH"
-  --output "$OUTPUT_FOR_SHARD"
-  --model "$MODEL"
-  --base-url http://127.0.0.1:8000/v1
-  --api-key EMPTY
-  --workers "$WORKERS"
-  --temperature "$TEMPERATURE"
-  --thinking-budget "$THINKING_BUDGET"
-)
-if [[ -n "$LIMIT" ]]; then
-  EXTRACTOR_ARGS+=(--limit "$LIMIT")
-fi
-if [[ "$GUIDED_JSON" == "0" || "$GUIDED_JSON" == "false" ]]; then
-  EXTRACTOR_ARGS+=(--no-guided-json)
-fi
-if [[ "$SHARD_COUNT" -gt 1 ]]; then
-  EXTRACTOR_ARGS+=(--shard "$SHARD_INDEX" "$SHARD_COUNT")
-fi
+# ── Run the extractor, looping over SOURCES ──────────────────────
+# Sources are processed sequentially against the same in-pod vLLM endpoint.
+# Each invocation has its own resumable side-files (row_id check on the
+# main output), so a crash partway through one source doesn't lose earlier
+# sources.
+FAILED_SOURCES=()
+SUCCESS_SOURCES=()
+for src in $(echo "$SOURCES" | tr ',' ' '); do
+  case "$src" in
+    kenya|afrimedqa_saq|whb) ;;
+    *) echo "WARNING: unknown source '$src', skipping" >&2; continue ;;
+  esac
+  src_input="data/sources/${src}.jsonl"
+  src_output="benchmark/v0.2/key_facts/${src}_keyfacts.jsonl"
+  if [[ "$SHARD_COUNT" -gt 1 ]]; then
+    src_output="${src_output%.jsonl}_shard${SHARD_INDEX}.jsonl"
+  fi
 
-echo "Running: python3 scripts/extract_keyfacts.py ${EXTRACTOR_ARGS[*]}"
-PYTHONPATH=src python3 scripts/extract_keyfacts.py "${EXTRACTOR_ARGS[@]}"
+  echo
+  echo "════════════════════════════════════════════════════════════════"
+  echo "  Extracting source: $src"
+  echo "    input:  $src_input"
+  echo "    output: $src_output"
+  echo "════════════════════════════════════════════════════════════════"
 
-echo "Shard ${SHARD_INDEX}/${SHARD_COUNT} complete: $OUTPUT_FOR_SHARD"
+  if [[ ! -f "$src_input" ]]; then
+    echo "ERROR: source input not found: $src_input" >&2
+    FAILED_SOURCES+=("$src (input missing)")
+    continue
+  fi
+
+  EXTRACTOR_ARGS=(
+    --input "$src_input"
+    --output "$src_output"
+    --model "$MODEL"
+    --base-url http://127.0.0.1:8000/v1
+    --api-key EMPTY
+    --workers "$WORKERS"
+    --temperature "$TEMPERATURE"
+    --thinking-budget "$THINKING_BUDGET"
+  )
+  if [[ -n "$LIMIT" ]]; then
+    EXTRACTOR_ARGS+=(--limit "$LIMIT")
+  fi
+  if [[ "$GUIDED_JSON" == "0" || "$GUIDED_JSON" == "false" ]]; then
+    EXTRACTOR_ARGS+=(--no-guided-json)
+  fi
+  if [[ "$SHARD_COUNT" -gt 1 ]]; then
+    EXTRACTOR_ARGS+=(--shard "$SHARD_INDEX" "$SHARD_COUNT")
+  fi
+
+  echo "Running: python3 scripts/extract_keyfacts.py ${EXTRACTOR_ARGS[*]}"
+  if PYTHONPATH=src python3 scripts/extract_keyfacts.py "${EXTRACTOR_ARGS[@]}"; then
+    SUCCESS_SOURCES+=("$src")
+  else
+    FAILED_SOURCES+=("$src (extractor exit nonzero)")
+    # Continue to next source rather than crashing the whole pod — the
+    # other sources may still succeed, and Layer 1 is best-effort per-row
+    # anyway (errors are logged per row).
+  fi
+done
+
+echo
+echo "════════════════════════════════════════════════════════════════"
+echo "  Summary"
+echo "════════════════════════════════════════════════════════════════"
+echo "Succeeded: ${SUCCESS_SOURCES[*]:-(none)}"
+echo "Failed:    ${FAILED_SOURCES[*]:-(none)}"
+if [[ ${#FAILED_SOURCES[@]} -gt 0 ]]; then
+  exit 1
+fi

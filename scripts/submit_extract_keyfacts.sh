@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Submit a key-fact extraction job to the LiGHT cluster (EPFL RCP via runai).
 #
-# Extracts atomic must-cover key_facts from one of the v0.2 open_ended
-# mamabench JSONL artifacts (Kenya / AfriMed-SAQ / WHB), one row at a
-# time, using a vLLM-served LLM. Defaults to Qwen3.5-397B-A17B-FP8 on a
-# multi-GPU H100 node.
+# Extracts atomic must-cover key_facts from one or more of the v0.2
+# open_ended mamabench JSONL artifacts (Kenya / AfriMed-SAQ / WHB), one
+# row at a time, using a vLLM-served LLM. Multi-source mode runs all
+# listed sources sequentially against a single in-pod vLLM, saving the
+# warmup cost (~20 min per pod) that would otherwise be paid per-source.
+# Defaults to Qwen3.5-397B-A17B-FP8 on a multi-GPU H200 node.
 #
-# Required env vars:
-#   SOURCE       kenya | afrimedqa_saq | whb
-#   INPUT_PATH   local path to the v0.2 open_ended JSONL (absolute, or
-#                relative to the mamabench repo root); rsync'd to the cluster.
-#                Defaults: benchmark/v0.2/${SOURCE}.jsonl
+# Required env vars (one of):
+#   SOURCES      comma-separated list of: kenya, afrimedqa_saq, whb
+#                  (e.g. "whb,afrimedqa_saq,kenya" for the full v0.2 build)
+#   SOURCE       single value (backward compat); use SOURCES for multi.
 #
 # Common optional env vars (defaults shown):
-#   OUTPUT_PATH        benchmark/v0.2/key_facts/${SOURCE}_keyfacts.jsonl
 #   MODEL              Qwen/Qwen3.5-397B-A17B-FP8
 #   WORKERS            8
 #   LIMIT              (none; use a small int like 5 for smoke tests)
@@ -23,17 +23,19 @@
 #   NODE_POOL          h100
 #   GPUS               8   (tensor-parallel size for vLLM; 397B FP8 needs ~5+)
 #
+# Per-source paths are fixed:
+#   local input:   benchmark/v0.2/<src>.jsonl
+#   cluster input: data/sources/<src>.jsonl
+#   output:        benchmark/v0.2/key_facts/<src>_keyfacts.jsonl
+#                  benchmark/v0.2/key_facts/<src>_keyfacts_reasoning.jsonl
+#
 # Examples:
-#   # Smoke test (Kenya, 5 rows)
-#   SOURCE=kenya LIMIT=5 \
+#   # Full build: all 3 open-ended sources in a single pod
+#   SOURCES=whb,afrimedqa_saq,kenya \
 #   scripts/submit_extract_keyfacts.sh
 #
-#   # Full Kenya open-ended set
-#   SOURCE=kenya \
-#   scripts/submit_extract_keyfacts.sh
-#
-#   # WHB (20 rows, 1 worker, smaller model for budget)
-#   SOURCE=whb MODEL=Qwen/Qwen3.6-27B-FP8 GPUS=1 WORKERS=1 \
+#   # Smoke test: 5 WHB rows
+#   SOURCE=whb LIMIT=5 \
 #   scripts/submit_extract_keyfacts.sh
 
 set -euo pipefail
@@ -49,14 +51,20 @@ NODE_POOL="${NODE_POOL:-h100}"
 GPUS="${GPUS:-8}"
 
 # ── Extraction config ─────────────────────────────────────────────
-SOURCE="${SOURCE:?SOURCE required (kenya|afrimedqa_saq|whb)}"
-case "$SOURCE" in
-  kenya|afrimedqa_saq|whb) ;;
-  *) echo "ERROR: SOURCE must be one of kenya, afrimedqa_saq, whb (got '$SOURCE')" >&2; exit 1 ;;
-esac
+# Resolve and validate the source list.
+SOURCES="${SOURCES:-${SOURCE:-}}"
+if [[ -z "$SOURCES" ]]; then
+  echo "ERROR: SOURCES (or SOURCE) required: comma-separated subset of {kenya,afrimedqa_saq,whb}" >&2
+  exit 1
+fi
+SOURCES_LIST=$(echo "$SOURCES" | tr ',' ' ')
+for src in $SOURCES_LIST; do
+  case "$src" in
+    kenya|afrimedqa_saq|whb) ;;
+    *) echo "ERROR: unknown source '$src' (allowed: kenya, afrimedqa_saq, whb)" >&2; exit 1 ;;
+  esac
+done
 
-INPUT_PATH="${INPUT_PATH:-benchmark/v0.2/${SOURCE}.jsonl}"
-OUTPUT_PATH="${OUTPUT_PATH:-benchmark/v0.2/key_facts/${SOURCE}_keyfacts.jsonl}"
 MODEL="${MODEL:-Qwen/Qwen3.5-397B-A17B-FP8}"
 WORKERS="${WORKERS:-8}"
 LIMIT="${LIMIT:-}"
@@ -93,45 +101,50 @@ fi
 LOCAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_ROOT="$SERVER:$SERVER_SCRATCH"
 
-# Resolve local input path
-case "$INPUT_PATH" in
-  /*) LOCAL_INPUT="$INPUT_PATH" ;;
-  ~*) LOCAL_INPUT="${INPUT_PATH/#\~/$HOME}" ;;
-  *)  LOCAL_INPUT="$LOCAL_ROOT/$INPUT_PATH" ;;
-esac
-
-if [[ ! -f "$LOCAL_INPUT" ]]; then
-  echo "ERROR: input file not found: $LOCAL_INPUT" >&2
-  exit 1
-fi
-
-# Stable cluster path for the source input.
-INPUT_BASENAME="$(basename "$LOCAL_INPUT")"
-INPUT_BASENAME_SAFE="${INPUT_BASENAME// /_}"
-CLUSTER_INPUT="data/sources/$INPUT_BASENAME_SAFE"
+# Verify each source's local input file exists before any cluster work.
+for src in $SOURCES_LIST; do
+  local_input="$LOCAL_ROOT/benchmark/v0.2/${src}.jsonl"
+  if [[ ! -f "$local_input" ]]; then
+    echo "ERROR: input file not found for source '$src': $local_input" >&2
+    exit 1
+  fi
+done
 
 echo "Preparing cluster workspace at $SERVER_SCRATCH..."
 ssh "$SERVER" "mkdir -p \
   '$SERVER_SCRATCH/scripts' \
   '$SERVER_SCRATCH/src/mamabench' \
-  '$SERVER_SCRATCH/prompts/keyfact_extractor' \
+  '$SERVER_SCRATCH/prompts' \
   '$SERVER_SCRATCH/data/sources' \
   '$SERVER_SCRATCH/logs' \
-  '$SERVER_SCRATCH/$(dirname "$OUTPUT_PATH")'"
+  '$SERVER_SCRATCH/benchmark/v0.2/key_facts'"
 
-echo "Syncing repo + source input to cluster..."
+echo "Syncing repo to cluster..."
 rsync -av --delete --exclude="__pycache__/" "$LOCAL_ROOT/scripts/" "$SERVER_ROOT/scripts/"
 rsync -av --delete --exclude="__pycache__/" "$LOCAL_ROOT/src/" "$SERVER_ROOT/src/"
 rsync -av --delete "$LOCAL_ROOT/prompts/" "$SERVER_ROOT/prompts/"
-rsync -av "$LOCAL_INPUT" "$SERVER_ROOT/$CLUSTER_INPUT"
 
-echo "Submitting $SHARD_COUNT job(s)..."
+echo "Syncing source inputs for: $SOURCES_LIST"
+for src in $SOURCES_LIST; do
+  rsync -av "$LOCAL_ROOT/benchmark/v0.2/${src}.jsonl" "$SERVER_ROOT/data/sources/${src}.jsonl"
+done
+
+# Build the job-name tag from the source list.
+# - Single source → just the source name (e.g. "whb")
+# - Multi-source  → hyphen-joined (e.g. "whb-afrimedqa-saq-kenya")
+N_SOURCES=$(echo "$SOURCES_LIST" | wc -w | tr -d ' ')
+if [[ "$N_SOURCES" -eq 1 ]]; then
+  SOURCES_TAG="$(echo "$SOURCES_LIST" | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-9-')"
+else
+  SOURCES_TAG="$(echo "$SOURCES_LIST" | tr ' ' '-' | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-9-')"
+fi
+
+echo "Submitting $SHARD_COUNT job(s) for sources: $SOURCES_LIST"
 for shard in $(seq 0 $((SHARD_COUNT - 1))); do
-  SOURCE_FOR_JOB="$(echo "$SOURCE" | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-9-')"
   if [[ "$SHARD_COUNT" -gt 1 ]]; then
-    JOB_NAME="${JOB_PREFIX}-${SOURCE_FOR_JOB}-shard${shard}"
+    JOB_NAME="${JOB_PREFIX}-${SOURCES_TAG}-shard${shard}"
   else
-    JOB_NAME="${JOB_PREFIX}-${SOURCE_FOR_JOB}"
+    JOB_NAME="${JOB_PREFIX}-${SOURCES_TAG}"
   fi
   ssh "$SERVER" "runai delete job '$JOB_NAME' --project '$PROJECT' >/dev/null 2>&1 || true"
 
@@ -148,9 +161,7 @@ for shard in $(seq 0 $((SHARD_COUNT - 1))); do
     --run-as-gid 84257 \
     --backoff-limit 0 \
     -e REPO_DIR="$REPO_DIR" \
-    -e SOURCE="$SOURCE" \
-    -e INPUT_PATH="$CLUSTER_INPUT" \
-    -e OUTPUT_PATH="$OUTPUT_PATH" \
+    -e SOURCES="$SOURCES" \
     -e MODEL="$MODEL" \
     -e WORKERS="$WORKERS" \
     -e LIMIT="$LIMIT" \
@@ -176,16 +187,11 @@ echo "Monitor:"
 echo "  ssh $SERVER 'runai list jobs --project $PROJECT'"
 if [[ "$SHARD_COUNT" -gt 1 ]]; then
   for shard in $(seq 0 $((SHARD_COUNT - 1))); do
-    echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SOURCE_FOR_JOB}-shard${shard} -f --project $PROJECT'"
+    echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SOURCES_TAG}-shard${shard} -f --project $PROJECT'"
   done
 else
-  echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SOURCE_FOR_JOB} -f --project $PROJECT'"
+  echo "  ssh $SERVER 'runai logs ${JOB_PREFIX}-${SOURCES_TAG} -f --project $PROJECT'"
 fi
 echo
 echo "Sync key_facts back when complete:"
-echo "  rsync -av '$SERVER_ROOT/$(dirname "$OUTPUT_PATH")/' '$LOCAL_ROOT/$(dirname "$OUTPUT_PATH")/'"
-if [[ "$SHARD_COUNT" -gt 1 ]]; then
-  base="${OUTPUT_PATH%.jsonl}"
-  echo "  # then merge:"
-  echo "  cat ${base}_shard{0..$((SHARD_COUNT-1))}.jsonl > ${OUTPUT_PATH}"
-fi
+echo "  rsync -av '$SERVER_ROOT/benchmark/v0.2/key_facts/' '$LOCAL_ROOT/benchmark/v0.2/key_facts/'"

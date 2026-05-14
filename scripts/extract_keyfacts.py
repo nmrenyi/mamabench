@@ -41,11 +41,9 @@ sys.path.insert(0, str(ROOT / "src"))
 from mamabench.adapters._keyfact_extraction import (  # noqa: E402
     EXTRACTION_JSON_SCHEMA,
     ExtractionError,
-    extract_row_with_reasoning,
+    extract_row,
 )
-from mamabench.obgyn_classifier import (  # noqa: E402
-    make_openai_completer_with_reasoning,
-)
+from mamabench.obgyn_classifier import make_openai_completer  # noqa: E402
 from mamabench.prompts import (  # noqa: E402
     KEYFACT_EXTRACTOR_PROMPT_VERSION,
     load_keyfact_extractor_prompt,
@@ -257,15 +255,18 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     system_prompt = load_keyfact_extractor_prompt()
-    complete = make_openai_completer_with_reasoning(
+    # Reasoning is captured as a required field inside the JSON schema (see
+    # EXTRACTION_JSON_SCHEMA). We deliberately disable Qwen3+ thinking mode
+    # for this task: vLLM 0.20.2 cannot expose reasoning_content while
+    # response_format is json_schema (the workaround flag has its own bugs),
+    # and the in-schema reasoning field captures structured CoT instead.
+    complete = make_openai_completer(
         model=args.model,
         base_url=args.base_url,
         api_key=args.api_key,
         temperature=args.temperature,
         json_schema=EXTRACTION_JSON_SCHEMA if args.guided_json else None,
-        disable_thinking=args.disable_thinking,
-        thinking_budget=args.thinking_budget,
-        schema_name="extraction",
+        disable_thinking=True,
     )
 
     reasoning_output_path = reasoning_path_for(args.output)
@@ -293,12 +294,12 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     write_lock = threading.Lock()
-    counts = {"done": 0, "errors": 0, "reasoning_missing": 0}
+    counts = {"done": 0, "errors": 0}
     t_start = time.time()
 
     def process_row(row_id: str, question: str, reference: str) -> None:
         try:
-            result, reasoning = extract_row_with_reasoning(
+            result = extract_row(
                 complete=complete,
                 system_prompt=system_prompt,
                 question=question,
@@ -329,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
             "row_id": row_id,
             "model": args.model,
             "prompt_version": KEYFACT_EXTRACTOR_PROMPT_VERSION,
-            "reasoning": reasoning or "",
+            "reasoning": result["reasoning"],
         }
         with write_lock:
             # Write reasoning first so the main side-file is the resume key
@@ -343,8 +344,6 @@ def main(argv: list[str] | None = None) -> int:
             out_file.write(json.dumps(record, ensure_ascii=False) + "\n")
             out_file.flush()
             counts["done"] += 1
-            if reasoning is None:
-                counts["reasoning_missing"] += 1
             if counts["done"] % args.progress_every == 0:
                 elapsed = time.time() - t_start
                 rate = counts["done"] / elapsed if elapsed > 0 else 0.0
@@ -372,12 +371,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     if counts["done"]:
         print(f"elapsed: {elapsed:.1f}s ({rate:.1f} rows/s)")
-    if counts["reasoning_missing"] > 0:
-        print(
-            f"  note: {counts['reasoning_missing']}/{counts['done']} rows had "
-            f"no reasoning_content from the server — check that vLLM was "
-            f"started with --enable-reasoning --reasoning-parser qwen3."
-        )
     print(f"  keyfacts:  {args.output}")
     print(f"  reasoning: {reasoning_output_path}")
 

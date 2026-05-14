@@ -331,17 +331,16 @@ def make_openai_completer_with_reasoning(
         )
         kwargs["messages"] = list(messages)
         # Bypass the typed ChatCompletionMessage model and read the raw HTTP
-        # response body. vLLM returns `reasoning_content` as an extension
-        # field which the OpenAI Python SDK's typed model strips (it depends
-        # on the SDK version whether unknown fields land in model_extra or
-        # are dropped entirely — neither reliable for our purposes).
-        # with_raw_response gives access to the parsed HTTP response from
-        # which we read the raw JSON. This works regardless of SDK version.
+        # response body. vLLM returns the native chain-of-thought under
+        # `reasoning` (NOT `reasoning_content` — that was a misread on my
+        # part; the vLLM docs and PR #41199 both use `.reasoning`). The
+        # OpenAI Python SDK's typed message model strips this extension
+        # field, so we read it from the raw response dict.
         http_response = client.chat.completions.with_raw_response.create(**kwargs)
         data = json.loads(http_response.text)
         message = data["choices"][0]["message"]
         content = message.get("content") or ""
-        reasoning = message.get("reasoning_content")
+        reasoning = message.get("reasoning")
         if isinstance(reasoning, str) and not reasoning.strip():
             reasoning = None
         return content, reasoning

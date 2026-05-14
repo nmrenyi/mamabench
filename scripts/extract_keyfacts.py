@@ -41,13 +41,23 @@ sys.path.insert(0, str(ROOT / "src"))
 from mamabench.adapters._keyfact_extraction import (  # noqa: E402
     EXTRACTION_JSON_SCHEMA,
     ExtractionError,
-    extract_row,
+    extract_row_with_reasoning,
 )
-from mamabench.obgyn_classifier import make_openai_completer  # noqa: E402
+from mamabench.obgyn_classifier import (  # noqa: E402
+    make_openai_completer_with_reasoning,
+)
 from mamabench.prompts import (  # noqa: E402
     KEYFACT_EXTRACTOR_PROMPT_VERSION,
     load_keyfact_extractor_prompt,
 )
+
+
+def reasoning_path_for(output_path: Path) -> Path:
+    """Derive the reasoning side-file path from the main output path.
+
+    ``foo/bar_keyfacts.jsonl`` → ``foo/bar_keyfacts_reasoning.jsonl``.
+    """
+    return output_path.with_name(output_path.stem + "_reasoning.jsonl")
 
 
 def iter_open_ended_jsonl(jsonl_path: Path):
@@ -247,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     system_prompt = load_keyfact_extractor_prompt()
-    complete = make_openai_completer(
+    complete = make_openai_completer_with_reasoning(
         model=args.model,
         base_url=args.base_url,
         api_key=args.api_key,
@@ -255,11 +265,15 @@ def main(argv: list[str] | None = None) -> int:
         json_schema=EXTRACTION_JSON_SCHEMA if args.guided_json else None,
         disable_thinking=args.disable_thinking,
         thinking_budget=args.thinking_budget,
+        schema_name="extraction",
     )
 
+    reasoning_output_path = reasoning_path_for(args.output)
     already_done = load_existing_row_ids(args.output)
     if already_done:
-        print(f"resume: skipping {len(already_done)} rows already in {args.output}")
+        print(
+            f"resume: skipping {len(already_done)} rows already in {args.output}"
+        )
 
     shard_tuple = tuple(args.shard) if args.shard is not None else None
     rows_to_process, n_skipped_shard, n_skipped_resume = select_rows(
@@ -279,12 +293,12 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     write_lock = threading.Lock()
-    counts = {"done": 0, "errors": 0}
+    counts = {"done": 0, "errors": 0, "reasoning_missing": 0}
     t_start = time.time()
 
     def process_row(row_id: str, question: str, reference: str) -> None:
         try:
-            result = extract_row(
+            result, reasoning = extract_row_with_reasoning(
                 complete=complete,
                 system_prompt=system_prompt,
                 question=question,
@@ -311,16 +325,36 @@ def main(argv: list[str] | None = None) -> int:
             "summary": result["summary"],
             "key_facts": result["key_facts"],
         }
+        reasoning_record = {
+            "row_id": row_id,
+            "model": args.model,
+            "prompt_version": KEYFACT_EXTRACTOR_PROMPT_VERSION,
+            "reasoning": reasoning or "",
+        }
         with write_lock:
+            # Write reasoning first so the main side-file is the resume key
+            # — if a crash interrupts a row, the worst case is an orphan
+            # reasoning record without a matching keyfacts record (harmless;
+            # the next resume just re-extracts that row).
+            reasoning_file.write(
+                json.dumps(reasoning_record, ensure_ascii=False) + "\n"
+            )
+            reasoning_file.flush()
             out_file.write(json.dumps(record, ensure_ascii=False) + "\n")
             out_file.flush()
             counts["done"] += 1
+            if reasoning is None:
+                counts["reasoning_missing"] += 1
             if counts["done"] % args.progress_every == 0:
                 elapsed = time.time() - t_start
                 rate = counts["done"] / elapsed if elapsed > 0 else 0.0
-                print(f"  extracted {counts['done']} rows ({rate:.1f} rows/s)")
+                print(
+                    f"  extracted {counts['done']} rows ({rate:.1f} rows/s)"
+                )
 
-    with args.output.open("a", encoding="utf-8") as out_file:
+    reasoning_output_path.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("a", encoding="utf-8") as out_file, \
+            reasoning_output_path.open("a", encoding="utf-8") as reasoning_file:
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             futures = [
                 executor.submit(process_row, row_id, q, ref)
@@ -338,6 +372,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if counts["done"]:
         print(f"elapsed: {elapsed:.1f}s ({rate:.1f} rows/s)")
+    if counts["reasoning_missing"] > 0:
+        print(
+            f"  note: {counts['reasoning_missing']}/{counts['done']} rows had "
+            f"no reasoning_content from the server — check that vLLM was "
+            f"started with --enable-reasoning --reasoning-parser qwen3."
+        )
+    print(f"  keyfacts:  {args.output}")
+    print(f"  reasoning: {reasoning_output_path}")
 
     return 0 if counts["errors"] == 0 else 1
 

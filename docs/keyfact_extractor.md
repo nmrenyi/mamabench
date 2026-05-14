@@ -71,7 +71,11 @@ Note: there is **no fixed upper bound on the number of key_facts**. The referenc
 
 ## Output JSONL shape (cluster driver)
 
-The driver `scripts/extract_keyfacts.py` writes one JSON record per row to a side-file at `benchmark/v0.2/key_facts/<source>_keyfacts.jsonl`:
+The driver `scripts/extract_keyfacts.py` writes **two side-files** per source — a clean rubric file used downstream, and an audit file capturing the model's reasoning content for inspection.
+
+### Main side-file (used by downstream adapters)
+
+`benchmark/v0.2/key_facts/<source>_keyfacts.jsonl`:
 
 ```json
 {
@@ -87,7 +91,43 @@ The driver `scripts/extract_keyfacts.py` writes one JSON record per row to a sid
 }
 ```
 
-These side-files are then folded into each row's `source.metadata.key_facts` when the open-ended adapters are re-emitted.
+These rows are folded into each open-ended row's `source.metadata.key_facts` when the open-ended adapters are re-emitted.
+
+### Reasoning side-file (audit only)
+
+`benchmark/v0.2/key_facts/<source>_keyfacts_reasoning.jsonl`:
+
+```json
+{
+  "row_id": "mamabench_v0.2_kenya_100",
+  "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+  "prompt_version": "v1",
+  "reasoning": "<the model's full thinking-mode chain-of-thought>"
+}
+```
+
+Joined to the main file by `row_id`. Kept separate so:
+
+1. The main file stays small and clean (~1KB per row vs ~20–80KB with reasoning inlined).
+2. Downstream tooling that only needs the rubric doesn't have to ignore the reasoning blob.
+3. Reasoning can be reviewed / archived independently of the rubric, including being dropped entirely for shipping a lean HuggingFace release.
+
+### How reasoning is captured
+
+vLLM is started with `--enable-reasoning --reasoning-parser qwen3` (see `scripts/run_extract_keyfacts_job.sh`). Without these flags, Qwen3+ thinking-mode content stays inlined in `message.content`, which breaks the `response_format`/json_schema constraint we use for structured output.
+
+With the flags set, vLLM parses `<think>...</think>` blocks out of the raw completion and exposes the parsed text in `response.choices[0].message.reasoning_content`. The driver reads this field via `make_openai_completer_with_reasoning` and writes it to the reasoning side-file.
+
+If a row comes back with `reasoning_content == None` (the server isn't parsing reasoning out, or thinking was disabled), the reasoning record contains an empty string and the CLI prints a warning at end-of-run noting how many rows had this happen.
+
+### Resume semantics
+
+The main side-file is the **single source of truth** for resume. If a crash interrupts mid-row:
+
+- Reasoning is written first, then main → worst case is an orphan reasoning record with no matching main record.
+- On resume, the row is re-extracted from scratch (reasoning side-file is appended-to, so the new reasoning lands alongside the orphan — joined-on-row_id reads will see the latest).
+
+This is intentional: re-running an extraction for a row that previously failed produces a clean main record, and the audit file harmlessly captures both attempts.
 
 ## Cluster experiment setup
 

@@ -61,6 +61,9 @@ EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
 
 
 ChatCompleter = Callable[[list[dict[str, str]]], str]
+ChatCompleterWithReasoning = Callable[
+    [list[dict[str, str]]], tuple[str, str | None]
+]
 
 
 class ExtractionError(Exception):
@@ -139,7 +142,11 @@ def extract_row(
     question: str,
     reference: str,
 ) -> dict[str, Any]:
-    """Send one (system, user) chat to ``complete`` and parse the extraction."""
+    """Send one (system, user) chat to ``complete`` and parse the extraction.
+
+    For the audit-grade path that also captures the model's reasoning_content,
+    use :func:`extract_row_with_reasoning`.
+    """
     user_message = format_user_message(question, reference)
     raw = complete(
         [
@@ -148,3 +155,27 @@ def extract_row(
         ]
     )
     return parse_extraction(raw)
+
+
+def extract_row_with_reasoning(
+    *,
+    complete: ChatCompleterWithReasoning,
+    system_prompt: str,
+    question: str,
+    reference: str,
+) -> tuple[dict[str, Any], str | None]:
+    """Send one (system, user) chat and return both the parsed extraction
+    and the model's reasoning_content (or ``None`` if the server isn't
+    parsing reasoning out).
+
+    Returns ``(extraction_dict, reasoning_text_or_None)``.
+    """
+    user_message = format_user_message(question, reference)
+    content, reasoning = complete(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+    )
+    extraction = parse_extraction(content)
+    return extraction, reasoning

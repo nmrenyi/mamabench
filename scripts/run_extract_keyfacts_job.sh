@@ -104,6 +104,11 @@ fi
 echo "Output for this shard: $OUTPUT_FOR_SHARD"
 
 # ── Start vLLM ────────────────────────────────────────────────────
+# --enable-reasoning + --reasoning-parser qwen3 are required so vLLM
+# parses Qwen3's <think>...</think> output into the separate
+# `reasoning_content` field on the message object — without these flags,
+# thinking tokens would be inlined into `content` and either break the
+# json_schema response_format constraint or be silently discarded.
 VLLM_LOG="logs/vllm_keyfacts_${SOURCE}_shard${SHARD_INDEX}.log"
 echo "Starting vLLM with model: $MODEL (tensor-parallel-size=$TENSOR_PARALLEL_SIZE)"
 vllm serve "$MODEL" \
@@ -112,6 +117,8 @@ vllm serve "$MODEL" \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \
   --tensor-parallel-size "$TENSOR_PARALLEL_SIZE" \
+  --enable-reasoning \
+  --reasoning-parser qwen3 \
   --language-model-only \
   --gdn-prefill-backend "$GDN_PREFILL_BACKEND" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \

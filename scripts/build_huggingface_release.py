@@ -9,6 +9,8 @@ Writes a directory tree mirroring the layout the HF dataset will have:
             <per-source JSONLs>
         side_tables/
             healthbench_criteria.jsonl       (v0.2+ only; rubric side-table)
+        key_facts/                            (v0.2+ only)
+            <source>_keyfacts_reasoning.jsonl  per-row chain-of-thought (joined by row_id)
         manifests/
             <per-source manifest JSONs>
             release_manifest.json
@@ -99,6 +101,16 @@ RELEASE_FILES: dict[str, dict[str, object]] = {
         "side_tables": [
             "healthbench_criteria.jsonl",
         ],
+        # Per-row reasoning side-files for the LLM-pipeline annotations.
+        # source.metadata.key_fact_extraction on each row carries the
+        # summary + key_facts; the matching `*_reasoning.jsonl` here adds
+        # the full chain-of-thought (~1 KB per row) for audit. Joined by
+        # row_id. Paths are relative to benchmark_dir.
+        "audit_files": [
+            "key_facts/whb_keyfacts_reasoning.jsonl",
+            "key_facts/afrimedqa_saq_keyfacts_reasoning.jsonl",
+            "key_facts/kenya_keyfacts_reasoning.jsonl",
+        ],
         # LLM-pipeline prompts referenced by each row's prompt_version field.
         # Bundle them with the release so consumers can audit what the
         # classifier / extractor saw. Strings name files OR directories under
@@ -162,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
     # with the benchmark rows.
     for name in spec["side_tables"]:  # type: ignore[union-attr]
         plan.append((ROOT / benchmark_dir / name, staging_dir / "side_tables" / name))
+    # Audit-only side-files (per-row LLM-pipeline reasoning traces). Paths
+    # under benchmark_dir are preserved in the staging dir so the layout is
+    # `staging/key_facts/<file>` mirroring the working tree.
+    for name in spec.get("audit_files", []):  # type: ignore[union-attr]
+        plan.append((ROOT / benchmark_dir / name, staging_dir / name))
     for name in spec["manifests"]:  # type: ignore[union-attr]
         plan.append((ROOT / benchmark_dir / "manifests" / name, staging_dir / "manifests" / name))
     plan.append((schema_json, staging_dir / "schema" / schema_json.name))

@@ -54,6 +54,9 @@ SERVER="${SERVER:-light}"
 SERVER_SCRATCH="${SERVER_SCRATCH:-/mnt/light/scratch/users/yiren/mamabench}"
 REPO_DIR="${REPO_DIR:-/lightscratch/users/yiren/mamabench}"
 NODE_POOL="${NODE_POOL:-h100}"
+# Number of GPUs per pod (also used as tensor-parallel size for vLLM).
+# Default 1 fits the original 27B classifier; bump to 8 for 397B FP8.
+GPUS="${GPUS:-1}"
 
 # ── Classification config ─────────────────────────────────────────
 SOURCE="${SOURCE:?SOURCE required (healthbench|kenya|medqa_usmle)}"
@@ -132,9 +135,9 @@ for shard in $(seq 0 $((SHARD_COUNT - 1))); do
   ssh "$SERVER" runai submit "$JOB_NAME" \
     --image "$IMAGE" \
     --pvc light-scratch:/lightscratch \
-    --gpu 1 \
-    --cpu 8 --cpu-limit 8 \
-    --memory 96G --memory-limit 96G \
+    --gpu "$GPUS" \
+    --cpu 16 --cpu-limit 16 \
+    --memory 256G --memory-limit 256G \
     --large-shm \
     --node-pool "$NODE_POOL" \
     --project "$PROJECT" \
@@ -156,6 +159,7 @@ for shard in $(seq 0 $((SHARD_COUNT - 1))); do
     -e MAX_NUM_SEQS="$MAX_NUM_SEQS" \
     -e GPU_MEMORY_UTILIZATION="$GPU_MEMORY_UTILIZATION" \
     -e GDN_PREFILL_BACKEND="$GDN_PREFILL_BACKEND" \
+    -e TENSOR_PARALLEL_SIZE="$GPUS" \
     -e SHARD_INDEX="$shard" \
     -e SHARD_COUNT="$SHARD_COUNT" \
     -e HF_HOME="$REPO_DIR/hf_cache" \

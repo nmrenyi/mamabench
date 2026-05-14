@@ -27,6 +27,7 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-128}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 GDN_PREFILL_BACKEND="${GDN_PREFILL_BACKEND:-triton}"
+TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-1}"
 WORKERS="${WORKERS:-8}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
 GUIDED_JSON="${GUIDED_JSON:-0}"
@@ -109,12 +110,13 @@ echo "Output for this shard: $OUTPUT_FOR_SHARD"
 # native CoT alongside free-form JSON output on V1. See
 # scripts/run_extract_keyfacts_job.sh for the full rationale.
 VLLM_LOG="logs/vllm_classify_${SUBSET}_shard${SHARD_INDEX}.log"
-echo "Starting vLLM with model: $MODEL"
+echo "Starting vLLM with model: $MODEL (tensor-parallel-size=$TENSOR_PARALLEL_SIZE)"
 vllm serve "$MODEL" \
   --host 0.0.0.0 \
   --port 8000 \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \
+  --tensor-parallel-size "$TENSOR_PARALLEL_SIZE" \
   --reasoning-parser qwen3 \
   --language-model-only \
   --gdn-prefill-backend "$GDN_PREFILL_BACKEND" \

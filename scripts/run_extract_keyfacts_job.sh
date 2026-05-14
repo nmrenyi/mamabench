@@ -104,11 +104,13 @@ fi
 echo "Output for this shard: $OUTPUT_FOR_SHARD"
 
 # ── Start vLLM ────────────────────────────────────────────────────
-# --enable-reasoning + --reasoning-parser qwen3 are required so vLLM
-# parses Qwen3's <think>...</think> output into the separate
-# `reasoning_content` field on the message object — without these flags,
-# thinking tokens would be inlined into `content` and either break the
-# json_schema response_format constraint or be silently discarded.
+# --reasoning-parser qwen3 makes vLLM parse Qwen3's <think>...</think>
+# output into the separate `reasoning_content` field on the message
+# object. Without it, thinking tokens are inlined into `content` and
+# either break the json_schema response_format constraint or get
+# silently discarded. (Older vLLM versions also required
+# --enable-reasoning; that flag was removed in vLLM 0.8+ — passing
+# --reasoning-parser alone is sufficient.)
 VLLM_LOG="logs/vllm_keyfacts_${SOURCE}_shard${SHARD_INDEX}.log"
 echo "Starting vLLM with model: $MODEL (tensor-parallel-size=$TENSOR_PARALLEL_SIZE)"
 vllm serve "$MODEL" \
@@ -117,7 +119,6 @@ vllm serve "$MODEL" \
   --max-model-len "$MAX_MODEL_LEN" \
   --max-num-seqs "$MAX_NUM_SEQS" \
   --tensor-parallel-size "$TENSOR_PARALLEL_SIZE" \
-  --enable-reasoning \
   --reasoning-parser qwen3 \
   --language-model-only \
   --gdn-prefill-backend "$GDN_PREFILL_BACKEND" \
@@ -127,10 +128,30 @@ VLLM_PID=$!
 echo "$VLLM_PID" > "logs/vllm_keyfacts_${SOURCE}_shard${SHARD_INDEX}.pid"
 
 echo "Waiting for vLLM to become ready..."
+# Send a real /v1/chat/completions ping (max_tokens=1, thinking disabled) —
+# /v1/models becomes responsive BEFORE DeepGEMM warmup completes for large
+# Qwen3 + FP8 models, so checking it lets the extractor fire while vLLM is
+# still warming up and every request errors out. A real chat completion
+# only succeeds once vLLM is genuinely serving.
+export MODEL
 for _attempt in $(seq 1 240); do
   if python3 - <<'PY' >/dev/null 2>&1
+import json
+import os
 import urllib.request
-urllib.request.urlopen("http://127.0.0.1:8000/v1/models", timeout=2).read()
+
+req = urllib.request.Request(
+    "http://127.0.0.1:8000/v1/chat/completions",
+    data=json.dumps({
+        "model": os.environ["MODEL"],
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }).encode(),
+    headers={"Content-Type": "application/json"},
+)
+data = json.loads(urllib.request.urlopen(req, timeout=15).read())
+assert "choices" in data, data
 PY
   then
     echo "vLLM ready."

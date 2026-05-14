@@ -118,10 +118,31 @@ VLLM_PID=$!
 echo "$VLLM_PID" > "logs/vllm_classify_${SUBSET}_shard${SHARD_INDEX}.pid"
 
 echo "Waiting for vLLM to become ready..."
+# Send a real /v1/chat/completions ping (max_tokens=1, thinking disabled) —
+# /v1/models becomes responsive BEFORE DeepGEMM warmup completes for large
+# Qwen3 + FP8 models. A real chat completion only succeeds once vLLM is
+# genuinely serving. (Latent bug fix: with Qwen3.6-27B-FP8 the warmup is
+# short enough that this hasn't bitten the classifier yet, but the shallow
+# probe is the same anti-pattern as in run_extract_keyfacts_job.sh.)
+export MODEL
 for _attempt in $(seq 1 180); do
   if python3 - <<'PY' >/dev/null 2>&1
+import json
+import os
 import urllib.request
-urllib.request.urlopen("http://127.0.0.1:8000/v1/models", timeout=2).read()
+
+req = urllib.request.Request(
+    "http://127.0.0.1:8000/v1/chat/completions",
+    data=json.dumps({
+        "model": os.environ["MODEL"],
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }).encode(),
+    headers={"Content-Type": "application/json"},
+)
+data = json.loads(urllib.request.urlopen(req, timeout=15).read())
+assert "choices" in data, data
 PY
   then
     echo "vLLM ready."

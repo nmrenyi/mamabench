@@ -107,16 +107,17 @@ PY
 
 # ── Start vLLM ────────────────────────────────────────────────────
 # --reasoning-parser qwen3 makes vLLM parse Qwen3's <think>...</think>
-# output into the separate `reasoning_content` field on the message.
+# output into a separate reasoning_content field when present.
 #
-# --structured-outputs-config.enable_in_reasoning=True is the load-bearing
-# flag for reasoning + json_schema together: vLLM defaults to disabling
-# reasoning whenever response_format/json_schema is set on a request, even
-# when --reasoning-parser is configured. That's exactly what bit our first
-# smoke test (StructuredOutputsConfig.enable_in_reasoning=False in the
-# server log). Setting this to True keeps reasoning enabled alongside
-# constrained JSON output. Docs:
-# https://docs.vllm.ai/en/latest/features/structured_outputs/
+# NOTE: we deliberately do NOT set
+# --structured-outputs-config.enable_in_reasoning=True. In vLLM 0.20.2
+# with the qwen3 parser + Qwen3.5-397B-A17B-FP8 + json_schema
+# response_format, that flag causes content to come back empty on every
+# row (100% failure rate observed on a full whb+saq+kenya run). Without
+# the flag, content is a clean JSON answer but reasoning_content is
+# always empty (vLLM silently suppresses reasoning when json_schema is
+# set). Trade-off: working extraction wins over audit reasoning. Filed
+# as a v0.2.1 follow-up to investigate further.
 VLLM_LOG="logs/vllm_keyfacts_shard${SHARD_INDEX}.log"
 echo "Starting vLLM with model: $MODEL (tensor-parallel-size=$TENSOR_PARALLEL_SIZE)"
 vllm serve "$MODEL" \
@@ -126,7 +127,6 @@ vllm serve "$MODEL" \
   --max-num-seqs "$MAX_NUM_SEQS" \
   --tensor-parallel-size "$TENSOR_PARALLEL_SIZE" \
   --reasoning-parser qwen3 \
-  --structured-outputs-config.enable_in_reasoning=True \
   --language-model-only \
   --gdn-prefill-backend "$GDN_PREFILL_BACKEND" \
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" \

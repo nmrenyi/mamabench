@@ -196,16 +196,31 @@ def load_keyfacts_by_row_id(
 ) -> dict[str, dict[str, Any]]:
     """Load a keyfacts side-file JSONL into ``{row_id: extraction_metadata}``.
 
-    Each value contains the per-row scoring-rubric metadata that gets folded
+    Each value contains the full per-row extraction metadata that gets folded
     into ``source.metadata.key_fact_extraction`` of the open-ended adapter
-    rows: ``{model, prompt_version, summary, key_facts}``. The audit-only
-    ``reasoning`` field stays in the parallel ``*_reasoning.jsonl`` side-file
-    and is *not* surfaced on the row.
+    rows:
+
+        {
+          "model":          str,
+          "prompt_version": str,
+          "summary":        str,
+          "key_facts":      list[str],
+          "reasoning":      str,   # merged from the parallel *_reasoning.jsonl
+        }
+
+    The ``reasoning`` field is auto-merged from a sibling
+    ``<source>_keyfacts_reasoning.jsonl`` file in the same directory (if it
+    exists). Surfacing reasoning on the row — rather than only in the
+    side-file — makes the HF release fully self-describing: each entry
+    carries the model's chain-of-thought for the extraction, so dataset
+    users can audit the filtering/extraction process without needing to
+    download a separate side-file.
 
     Lines missing ``row_id`` (or with unparseable JSON) are skipped silently.
     """
+    keyfacts_path = Path(keyfacts_path)
     by_id: dict[str, dict[str, Any]] = {}
-    with Path(keyfacts_path).open(encoding="utf-8") as handle:
+    with keyfacts_path.open(encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if not line:
@@ -222,5 +237,31 @@ def load_keyfacts_by_row_id(
                 "prompt_version": rec.get("prompt_version"),
                 "summary": rec.get("summary"),
                 "key_facts": rec.get("key_facts", []),
+                "reasoning": "",
             }
+
+    # Merge reasoning from the parallel side-file when present. We derive
+    # the path from the keyfacts filename: foo_keyfacts.jsonl →
+    # foo_keyfacts_reasoning.jsonl. Missing reasoning file is not an error
+    # — the row just keeps reasoning="" and the consumer can detect it.
+    reasoning_path = keyfacts_path.with_name(keyfacts_path.stem + "_reasoning.jsonl")
+    if reasoning_path.is_file():
+        with reasoning_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                row_id = rec.get("row_id")
+                reasoning = rec.get("reasoning")
+                if (
+                    isinstance(row_id, str)
+                    and isinstance(reasoning, str)
+                    and row_id in by_id
+                ):
+                    by_id[row_id]["reasoning"] = reasoning
+
     return by_id

@@ -1,10 +1,14 @@
-"""Assemble the OBGYN classifier system prompt from modular markdown sections.
+"""Assemble mamabench LLM-pipeline system prompts from markdown sources.
 
-The prompt lives under `prompts/obgyn_classifier/` as small markdown modules
-(intro, categories, decision rule, guidance, input format, output format).
-Two modes — `openended` (HealthBench, Kenya Clinical Vignettes) and `mcq`
-(MedQA-USMLE) — share the same categories / decision rule / output format
-modules, and differ only in their intro, guidance, and input-format modules.
+Two pipelines live here:
+
+- **OBGYN classifier** (``load_classifier_prompt``): per-row category verdict
+  from one of five categories. Two modes (``openended`` / ``mcq``) share three
+  modules and swap three, so the prompt is split across multiple files under
+  ``prompts/obgyn_classifier/`` and assembled at runtime.
+- **Key-fact extractor** (``load_keyfact_extractor_prompt``): per-row atomic
+  must-cover claim list extracted from a reference response. Single mode,
+  single file: ``prompts/keyfact_extractor.md``.
 """
 
 from __future__ import annotations
@@ -13,11 +17,13 @@ from pathlib import Path
 from typing import Literal
 
 PROMPT_VERSION = "v6"
+KEYFACT_EXTRACTOR_PROMPT_VERSION = "v1"
 
 Mode = Literal["openended", "mcq"]
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MODULES_DIR = _REPO_ROOT / "prompts" / "obgyn_classifier"
+_KEYFACT_PROMPT_PATH = _REPO_ROOT / "prompts" / "keyfact_extractor.md"
 
 
 def _section_order(mode: Mode) -> list[str]:
@@ -34,7 +40,7 @@ def _section_order(mode: Mode) -> list[str]:
 
 
 def load_classifier_prompt(mode: Mode, *, modules_dir: Path | None = None) -> str:
-    """Return the assembled system prompt for the given mode.
+    """Return the assembled OBGYN classifier system prompt for the given mode.
 
     Modules are concatenated with a blank-line separator, each trimmed of
     surrounding whitespace so the assembled prompt has clean section breaks.
@@ -47,3 +53,16 @@ def load_classifier_prompt(mode: Mode, *, modules_dir: Path | None = None) -> st
             raise FileNotFoundError(f"missing prompt module: {path}")
         sections.append(path.read_text(encoding="utf-8").strip())
     return "\n\n".join(sections)
+
+
+def load_keyfact_extractor_prompt(*, prompt_path: Path | None = None) -> str:
+    """Return the key-fact extractor system prompt.
+
+    Read from a single file (``prompts/keyfact_extractor.md`` by default).
+    Trailing/leading whitespace is stripped so the prompt has a clean shape
+    when concatenated into chat messages.
+    """
+    path = prompt_path or _KEYFACT_PROMPT_PATH
+    if not path.is_file():
+        raise FileNotFoundError(f"missing prompt file: {path}")
+    return path.read_text(encoding="utf-8").strip()

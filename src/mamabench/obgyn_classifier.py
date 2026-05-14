@@ -131,6 +131,8 @@ def make_openai_completer(
     timeout: float = 300.0,
     json_schema: dict | None = None,
     disable_thinking: bool = True,
+    thinking_budget: int | None = None,
+    max_tokens: int | None = None,
     extra_body: dict | None = None,
 ) -> ChatCompleter:
     """Build a :data:`ChatCompleter` backed by the OpenAI Python SDK.
@@ -149,12 +151,24 @@ def make_openai_completer(
 
     Qwen3+ thinking mode:
 
-    - When ``disable_thinking`` is True (default), the request adds
+    - When ``disable_thinking`` is True, the request adds
       ``extra_body={"chat_template_kwargs": {"enable_thinking": False}}``.
       Qwen3 / Qwen3.5 / Qwen3.6 default to thinking mode, which produces
-      verbose chain-of-thought before any JSON output and either bloats the
-      response or times out. For a fast classification task we don't want
-      that — disabling thinking gives clean direct JSON.
+      verbose chain-of-thought before any JSON output. For a fast
+      classification task we usually don't want that — disabling thinking
+      gives clean direct JSON.
+    - When thinking is *enabled* (``disable_thinking=False``) the optional
+      ``thinking_budget`` (an integer token count) is forwarded as
+      ``extra_body.chat_template_kwargs.thinking_budget`` — Qwen3+ uses this
+      as a soft cap on the reasoning portion so the model self-wraps and
+      starts emitting the final answer before the budget is exhausted.
+
+    Hard output cap:
+
+    - ``max_tokens`` (when provided) is forwarded as the OpenAI-standard
+      ``max_tokens`` parameter and caps the total completion length
+      (reasoning + final answer combined). It's the universal safety net in
+      case ``thinking_budget`` is ignored by the server.
 
     ``extra_body`` is merged after the thinking-mode setting, so callers can
     pass additional vLLM-specific knobs without clobbering it.
@@ -174,6 +188,8 @@ def make_openai_completer(
             "messages": list(messages),
             "temperature": temperature,
         }
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
         if json_schema is not None:
             kwargs["response_format"] = {
                 "type": "json_schema",
@@ -184,8 +200,13 @@ def make_openai_completer(
                 },
             }
         merged_extra: dict[str, Any] = {}
+        chat_template_kwargs: dict[str, Any] = {}
         if disable_thinking:
-            merged_extra["chat_template_kwargs"] = {"enable_thinking": False}
+            chat_template_kwargs["enable_thinking"] = False
+        elif thinking_budget is not None:
+            chat_template_kwargs["thinking_budget"] = thinking_budget
+        if chat_template_kwargs:
+            merged_extra["chat_template_kwargs"] = chat_template_kwargs
         if extra_body:
             merged_extra.update(extra_body)
         if merged_extra:

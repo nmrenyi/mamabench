@@ -359,11 +359,18 @@ See `prompts/obgyn_classifier.md` for the rationale, change log, and
 validation plan.
 
 The driver, `scripts/classify_obgyn.py`, sends one row at a time to an
-OpenAI-compatible chat endpoint (vLLM / TGI / SGLang / Ollama) with
-structured `response_format=json_schema` enforcement and the Qwen3+
-`enable_thinking=False` chat-template flag. It supports `--workers N`
-for in-process concurrency and `--shard INDEX COUNT` for cross-job
-sharding on a cluster.
+OpenAI-compatible chat endpoint (vLLM / TGI / SGLang / Ollama). For v0.2
+we run with **thinking ON** (Qwen3+ `enable_thinking=True`) and capture
+the native chain-of-thought in `<source>_reasoning.jsonl` audit side-files
+alongside each verdict. Structured generation via `response_format=
+json_schema` is supported but disabled by default on vLLM V1 to avoid an
+incompatibility with native reasoning capture (we rely on the free-form
+JSON the model emits inside `content` after `</think>`, and `parse_verdict`
+in the driver is tolerant of code-fence wrapping). The driver supports
+`--workers N` for in-process concurrency, `--shard INDEX COUNT` for
+cross-job sharding, and `--timeout <seconds>` to raise the per-request
+HTTP timeout for thinking-mode rows whose reasoning regularly exceeds the
+300 s default.
 
 For the EPFL RCP cluster, two helper scripts wrap the runai submission:
 
@@ -384,17 +391,67 @@ On the production Qwen3.6-27B-FP8 model the agreement is 86.8%; most
 remaining disagreements are our prompt being correctly stricter about
 the "core medical concept, not patient demographics" rule.
 
-Generated verdict files for v0.2 (Qwen3.6-27B-FP8, prompt v6):
+Generated verdict files for v0.2 (Qwen3.6-27B-FP8, prompt v8, thinking on):
 
-- `benchmark/v0.2/classification_verdicts/kenya.jsonl` — 507 rows
-- `benchmark/v0.2/classification_verdicts/healthbench_oss_eval.jsonl` — 5,000 rows
-- `benchmark/v0.2/classification_verdicts/healthbench_hard.jsonl` — 1,000 rows
-- `benchmark/v0.2/classification_verdicts/healthbench_consensus.jsonl` — 3,671 rows (derived from oss_eval)
-- `benchmark/v0.2/classification_verdicts/medqa_usmle.jsonl` — 14,369 rows
+- `benchmark/v0.2/classification_verdicts/kenya.jsonl` — 507 rows (+ `kenya_reasoning.jsonl` audit side-file)
+- `benchmark/v0.2/classification_verdicts/oss_eval.jsonl` — 4,993 rows (+ `oss_eval_reasoning.jsonl`)
+- `benchmark/v0.2/classification_verdicts/hard.jsonl` — 998 rows (+ `hard_reasoning.jsonl`)
+- `benchmark/v0.2/classification_verdicts/consensus.jsonl` — 3,668 rows (derived from oss_eval; + reasoning inherited from oss_eval_reasoning)
+- `benchmark/v0.2/classification_verdicts/medqa_usmle.jsonl` — 14,369 rows (+ `medqa_usmle_reasoning.jsonl`)
 
-Per-source OBGYN-scope yield (rows with category != NONE): Kenya 60.7%,
-HealthBench oss_eval 23.6%, hard 25.3%, consensus 23.3%, MedQA-USMLE
-29.9%. Total unique OBGYN-scope rows across the v0.2 inputs: ~6,041.
+Per-source OBGYN-scope yield (rows with category != NONE), v0.2 final
+counts: Kenya 61.5% (312/507), HealthBench oss_eval 24.2% (1209/4993),
+hard 25.9% (258/998), consensus 23.8% (872/3668), MedQA-USMLE 29.2%
+(4199/14369), AfriMed-SAQ 100% (37/37, pre-curated), WHB 100% (20/20,
+pre-curated). Total v0.2 row count across all sources (incl. v0.1
+MCQ carryovers AfriMed-QA and MedMCQA): 25,949.
+
+#### Cross-classifier consistency check (Qwen3-27B vs Qwen3-397B)
+
+To validate the choice of Qwen3.6-27B-FP8 as the v0.2 classifier, we
+also ran the larger Qwen3.5-397B-A17B-FP8 on the HealthBench `oss_eval`
+subset with the identical prompt v8. On the 4,988 rows both models
+classified, **agreement was 98.12%**. The 94 disagreements concentrate
+on boundary calls (NONE↔CHILD_HEALTH, NONE↔SRH); per-category counts
+differ by less than 1% on every category. Crucially, the two models'
+*failure sets are disjoint and complementary*: the 7 rows the 27B
+couldn't classify (see below) are all classified `NONE` by the 397B,
+and the 5 rows the 397B couldn't classify are all classified `NONE` by
+the 27B. The 397B verdicts are retained as evidence at
+`benchmark/v0.2/classification_verdicts/oss_eval.qwen3_397b_v8.jsonl`
+and `oss_eval_reasoning.qwen3_397b_v8.jsonl`.
+
+### Classifier non-convergence on 7 HealthBench prompts
+
+Honest disclosure for v0.2: 7 HealthBench `oss_eval` prompts (2 of which
+also appear in the `hard` subset, 3 of which appear in the `consensus`
+subset) could not be classified and are excluded from the downstream
+filter. The classifier model (Qwen3.6-27B-FP8 in thinking mode at
+temperature=0) produced unbounded reasoning on these specific prompts —
+the same `prompt_id`s failed deterministically across four retry rounds
+with progressively raised limits (`max_model_len` 32K → 64K, request
+timeout 300s → 1800s → 3600s). At 64K context the model still emitted
+>63K reasoning tokens without ever closing the `<think>` block to emit a
+JSON verdict. The prompts are all short (48–360 chars) and obviously
+non-OBGYN (kidney stone pain, leg swelling, allergies, type-1 diabetes
+insulin question, etc.); the apparent failure mode is the model entering
+a long deliberation loop about whether the question could affect a
+maternal/pediatric patient and never converging on a verdict.
+
+The 397B cross-check (see preceding section) gives us strong evidence
+that all 7 dropped rows would have been classified as `NONE` (non-OBGYN)
+and thus excluded from the downstream filter anyway: the **net effect on
+in-scope row counts is zero**. The disclosure is about source-coverage
+honesty, not lost benchmark coverage.
+
+The excluded prompt IDs and their full text are saved as audit:
+
+- `benchmark/v0.2/classification_verdicts/oss_eval_excluded.jsonl` (7 rows)
+- `benchmark/v0.2/classification_verdicts/hard_excluded.jsonl` (2 rows, both subset of the 7)
+
+Source-coverage effect: HealthBench `oss_eval` source goes from 5,000 →
+4,993 classified; `hard` from 1,000 → 998; `consensus` from 3,671 →
+3,668.
 
 ## Build a release manifest
 

@@ -72,7 +72,7 @@ configs:
 
 # mamabench
 
-[GitHub](https://github.com/nmrenyi/mamabench) · 25,997 normalized rows · schema `v0.4` · release `v0.2`
+[GitHub](https://github.com/nmrenyi/mamabench) · 25,949 normalized rows · schema `v0.4` · release `v0.2`
 
 A normalized OBGYN / pediatrics / reproductive-health benchmark for evaluating end-to-end medical question-answering systems. Originally built to evaluate **MAMAI**, a Gemma 4 E4B + RAG medical-advice chatbot for nurses and midwives in Zanzibar.
 
@@ -88,17 +88,17 @@ This release adds two new evaluation tracks on top of v0.1's multiple-choice MCQ
 | Source | Set type | Rows | License | Notes |
 |---|---|---|---|---|
 | **MedMCQA** (OBGYN + Pediatrics subset) | mcq | 18,508 | Apache-2.0 | Indian AIIMS / NEET PG entrance exams; unchanged from v0.1 |
-| **MedQA-USMLE** (OBGYN subset, **refiltered**) | mcq | 4,301 | MIT | USMLE board questions; **row set differs from v0.1** — refiltered from the full upstream JSONL using the unified OBGYN classifier |
+| **MedQA-USMLE** (OBGYN subset, **refiltered**) | mcq | 4,199 | MIT | USMLE board questions; **row set differs from v0.1** — refiltered from the full upstream JSONL using the unified OBGYN classifier |
 | **AfriMed-QA MCQ** (OBGYN subset) | mcq | 534 | **CC BY-NC-SA 4.0** | Pan-African expert exam questions; unchanged from v0.1 |
 | **AfriMed-QA SAQ** (OBGYN subset, **new**) | open_ended | 37 | **CC BY-NC-SA 4.0** | Pan-African expert short-answer questions with reference rationales |
-| **Kenya Clinical Vignettes** (**new**) | open_ended | 308 | MIT | 507 nurse-written maternal/neonatal/child/SRH primary-care scenarios with Kenyan-clinician references, filtered to mamabench scope |
+| **Kenya Clinical Vignettes** (**new**) | open_ended | 312 | MIT | 507 nurse-written maternal/neonatal/child/SRH primary-care scenarios with Kenyan-clinician references, filtered to mamabench scope |
 | **WHB stumps** (**new**) | open_ended | 20 | **CC BY-SA 4.0** | Women's Health Benchmark expert-crafted "model stumps" — clinical prompts paired with expert justifications |
-| **HealthBench `oss_eval`** (OBGYN subset, **new**) | open_ended_rubric | 1,179 | MIT | OpenAI's HealthBench main evaluation, filtered to mamabench scope; physician-written rubrics |
-| **HealthBench `consensus`** (OBGYN subset, **new**) | open_ended_rubric | 857 | MIT | HealthBench's high-physician-agreement subset (cluster-template rubrics only) |
-| **HealthBench `hard`** (OBGYN subset, **new**) | open_ended_rubric | 253 | MIT | HealthBench's frontier-model stress test, filtered to mamabench scope |
-| **Total** | | **25,997** | mixed — see below | |
+| **HealthBench `oss_eval`** (OBGYN subset, **new**) | open_ended_rubric | 1,209 | MIT | OpenAI's HealthBench main evaluation, filtered to mamabench scope; physician-written rubrics |
+| **HealthBench `consensus`** (OBGYN subset, **new**) | open_ended_rubric | 872 | MIT | HealthBench's high-physician-agreement subset (cluster-template rubrics only) |
+| **HealthBench `hard`** (OBGYN subset, **new**) | open_ended_rubric | 258 | MIT | HealthBench's frontier-model stress test, filtered to mamabench scope |
+| **Total** | | **25,949** | mixed — see below | |
 
-Plus a non-row side-file: **`side_tables/healthbench_criteria.jsonl`** (11,761 unique rubric criteria, mapping `criterion_id` → text + level + axis). It lives outside `data/` so HF's default `data/*.jsonl` config doesn't merge its schema with the benchmark rows. Loaded directly, not via `load_dataset`.
+Plus a non-row side-file: **`side_tables/healthbench_criteria.jsonl`** (12,211 unique rubric criteria, mapping `criterion_id` → text + level + axis). It lives outside `data/` so HF's default `data/*.jsonl` config doesn't merge its schema with the benchmark rows. Loaded directly, not via `load_dataset`.
 
 ## License — read this before use
 
@@ -132,14 +132,14 @@ from datasets import load_dataset
 
 # Pick a single source / subset
 ds = load_dataset("nmrenyi/mamabench", "medmcqa",             revision="v0.2")  # 18,508
-ds = load_dataset("nmrenyi/mamabench", "medqa_usmle",         revision="v0.2")  #  4,301
+ds = load_dataset("nmrenyi/mamabench", "medqa_usmle",         revision="v0.2")  #  4,199
 ds = load_dataset("nmrenyi/mamabench", "afrimedqa",           revision="v0.2")  #    534
 ds = load_dataset("nmrenyi/mamabench", "afrimedqa_saq",       revision="v0.2")  #     37
-ds = load_dataset("nmrenyi/mamabench", "kenya",               revision="v0.2")  #    308
+ds = load_dataset("nmrenyi/mamabench", "kenya",               revision="v0.2")  #    312
 ds = load_dataset("nmrenyi/mamabench", "whb",                 revision="v0.2")  #     20
-ds = load_dataset("nmrenyi/mamabench", "healthbench_oss_eval", revision="v0.2")  #  1,179
-ds = load_dataset("nmrenyi/mamabench", "healthbench_consensus",revision="v0.2")  #    857
-ds = load_dataset("nmrenyi/mamabench", "healthbench_hard",    revision="v0.2")  #    253
+ds = load_dataset("nmrenyi/mamabench", "healthbench_oss_eval", revision="v0.2")  #  1,209
+ds = load_dataset("nmrenyi/mamabench", "healthbench_consensus",revision="v0.2")  #    872
+ds = load_dataset("nmrenyi/mamabench", "healthbench_hard",    revision="v0.2")  #    258
 ```
 
 Pin `revision="v0.2"` for reproducible evaluation.
@@ -174,7 +174,7 @@ For `set_type == "open_ended_rubric"`:
 
 ## The criteria side-table (HealthBench rubrics)
 
-`open_ended_rubric` rows reference rubric criteria by id; the criterion text and per-criterion metadata live in **`side_tables/healthbench_criteria.jsonl`** (11,761 unique criteria) — outside `data/` so HF's default config doesn't pick it up. Each side-table row:
+`open_ended_rubric` rows reference rubric criteria by id; the criterion text and per-criterion metadata live in **`side_tables/healthbench_criteria.jsonl`** (12,211 unique criteria) — outside `data/` so HF's default config doesn't pick it up. Each side-table row:
 
 ```json
 {
@@ -210,7 +210,7 @@ Each per-source manifest records its OBGYN-classifier filter stats (where applic
 The v0.2 MedQA-USMLE config is **not** a superset of the v0.1 row set. v0.1 used a pre-filtered 1,025-row TSV produced by an earlier Gemini classifier; v0.2 refilters from the upstream raw 14,369-row `US_qbank.jsonl` using mamabench's unified Qwen3.6-27B-FP8 OBGYN classifier (broader scope: includes pediatrics + reproductive health alongside OB/GYN strict).
 
 - v0.1 MedQA-USMLE: 1,025 rows
-- v0.2 MedQA-USMLE: 4,301 rows
+- v0.2 MedQA-USMLE: 4,199 rows
 
 To reproduce v0.1's row set, pin `revision="v0.1"`. v0.2 readers should expect the new row count.
 
@@ -221,13 +221,66 @@ For sources filtered by mamabench's unified OBGYN classifier (HealthBench, Kenya
 ```json
 "obgyn_classification": {
   "model": "Qwen/Qwen3.6-27B-FP8",
-  "prompt_version": "v6",
+  "prompt_version": "v8",
   "category": "MATERNAL",
   "rationale": "Postpartum depression at 6 weeks postpartum"
 }
 ```
 
-`category` is one of `MATERNAL`, `NEONATAL`, `CHILD_HEALTH`, `SEXUAL_AND_REPRODUCTIVE_HEALTH` (rows with `NONE` are filtered out). The classifier prompt is versioned and committed at `prompts/obgyn_classifier/` in the GitHub repo; the same `(model, prompt_version, source row)` triple reproduces the same verdict.
+`category` is one of `MATERNAL`, `NEONATAL`, `CHILD_HEALTH`, `SEXUAL_AND_REPRODUCTIVE_HEALTH` (rows with `NONE` are filtered out). The classifier prompt v8 is committed under `audit/prompts/obgyn_classifier/` in the release (and `prompts/obgyn_classifier/` in the GitHub repo); the same `(model, prompt_version, source row)` triple reproduces the same verdict.
+
+The classifier was run with thinking mode on (Qwen3+ `enable_thinking=True`), and the model's full chain-of-thought is preserved at `audit/classification_verdicts/<source>_reasoning.jsonl` (joined by `row_id`) for every row — included or filtered — so consumers can audit any classification decision.
+
+### Cross-classifier consistency check (Qwen3-27B vs Qwen3-397B)
+
+To validate the choice of Qwen3.6-27B-FP8 as the v0.2 classifier, we also ran the larger **Qwen3.5-397B-A17B-FP8** on the HealthBench `oss_eval` subset with the identical prompt v8. On the 4,988 rows both models classified:
+
+- **Agreement: 98.12%** (4,894 / 4,988)
+- 94 disagreements concentrate on boundary calls (NONE↔CHILD_HEALTH, NONE↔SRH)
+- Per-category counts differ by < 1% on every category
+- The two models' failure sets are disjoint and complementary (see below)
+
+The 397B verdicts and reasoning are retained as evidence at `audit/classification_verdicts/oss_eval.qwen3_397b_v8.jsonl` and `oss_eval_reasoning.qwen3_397b_v8.jsonl`.
+
+### Classifier non-convergence on 7 HealthBench prompts
+
+Honest disclosure: 7 HealthBench `oss_eval` prompts (of which 2 also appear in `hard`, 3 in `consensus`) could not be classified by the 27B and are excluded from the downstream filter. The 27B classifier in thinking mode at temperature=0 produced unbounded reasoning on these specific prompts — the same prompt IDs failed deterministically across four retry rounds with progressively raised limits (`max_model_len` 32K → 64K; request timeout 300s → 1800s → 3600s). At 64K context the model still emitted >63K reasoning tokens without ever closing the `<think>` block to emit a JSON verdict. The prompts are all short (48–360 chars) and obviously non-OBGYN (kidney stone pain, leg swelling, type-1 diabetes management, etc.); the apparent failure mode is the model entering a long deliberation loop about whether the question could affect a maternal/pediatric patient and never converging on a verdict.
+
+The 397B cross-check (preceding section) gives strong evidence that **all 7 dropped rows would have been classified `NONE` and thus excluded from the downstream filter anyway**: net effect on in-scope row counts is zero, and the failure sets are complementary (the 5 rows 397B failed on are all classified NONE by 27B). The disclosure is about source-coverage honesty, not lost benchmark coverage.
+
+The excluded prompt IDs and their full text are saved as audit:
+
+- `audit/classification_verdicts/oss_eval_excluded.jsonl` (7 rows)
+- `audit/classification_verdicts/hard_excluded.jsonl` (2 rows, subset of the 7)
+
+Source-coverage effect: HealthBench `oss_eval` source goes 5,000 → 4,993 classified; `hard` 1,000 → 998; `consensus` 3,671 → 3,668.
+
+## Audit / provenance layout
+
+The `audit/` top-level directory holds **everything not in `data/` or `side_tables/`** — i.e. the LLM-pipeline annotations that produced the filtered + annotated rows. Each consumer can opt to ignore it for plain benchmarking, or load the relevant side-files to audit every classification and keyfact decision.
+
+```
+audit/
+├── prompts/                                       # exact prompts used (v8)
+│   ├── obgyn_classifier.md                        # docs + change log
+│   ├── obgyn_classifier/                          # modular sections (assembled at runtime)
+│   └── keyfact_extractor.md                       # single-file extractor prompt
+├── key_facts/                                     # keyfact extractor CoT (one per open-ended source)
+│   ├── kenya_keyfacts_reasoning.jsonl
+│   ├── afrimedqa_saq_keyfacts_reasoning.jsonl
+│   └── whb_keyfacts_reasoning.jsonl
+└── classification_verdicts/                       # OBGYN classifier CoT + cross-check evidence
+    ├── kenya_reasoning.jsonl
+    ├── hard_reasoning.jsonl
+    ├── oss_eval_reasoning.jsonl
+    ├── medqa_usmle_reasoning.jsonl
+    ├── oss_eval.qwen3_397b_v8.jsonl               # 397B cross-classifier verdicts
+    ├── oss_eval_reasoning.qwen3_397b_v8.jsonl     # 397B CoT
+    ├── oss_eval_excluded.jsonl                    # 7-row drop disclosure
+    └── hard_excluded.jsonl
+```
+
+All audit JSONLs are joined to benchmark rows by `row_id`. The keyfacts/verdicts themselves are already inlined into each row's `source.metadata.{key_fact_extraction, obgyn_classification}`; the reasoning files add only the model's full chain-of-thought for auditability.
 
 ## AfriMed-QA data quality notes (unchanged from v0.1)
 

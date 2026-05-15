@@ -8,19 +8,26 @@ Writes a directory tree mirroring the layout the HF dataset will have:
         data/
             <per-source JSONLs>
         side_tables/
-            healthbench_criteria.jsonl       (v0.2+ only; rubric side-table)
-        key_facts/                            (v0.2+ only)
-            <source>_keyfacts_reasoning.jsonl  per-row chain-of-thought (joined by row_id)
+            healthbench_criteria.jsonl                  (v0.2+ only; rubric side-table)
         manifests/
             <per-source manifest JSONs>
             release_manifest.json
         schema/
             mamabench_v<schema_version>.md
             mamabench_v<schema_version>.schema.json
-        prompts/                              (v0.2+ only)
-            obgyn_classifier.md               LLM-pipeline prompt docs
-            obgyn_classifier/                 modular prompt sections
-            keyfact_extractor.md              single-file prompt
+        audit/                                          (v0.2+ only — LLM-pipeline provenance)
+            prompts/
+                obgyn_classifier.md                     classifier prompt docs
+                obgyn_classifier/                       modular prompt sections
+                keyfact_extractor.md                    single-file extractor prompt
+            key_facts/
+                <source>_keyfacts_reasoning.jsonl       per-row CoT for the keyfact extractor (joined by row_id)
+            classification_verdicts/
+                <source>_reasoning.jsonl                per-row CoT for the OBGYN classifier (joined by row_id)
+                oss_eval.qwen3_397b_v8.jsonl            397B cross-classifier evidence (HealthBench oss_eval)
+                oss_eval_reasoning.qwen3_397b_v8.jsonl  397B CoT for the same
+                oss_eval_excluded.jsonl                 7 oss_eval rows the 27B classifier didn't converge on
+                hard_excluded.jsonl                     2 hard rows (subset of the 7)
 
 The prompts directory is included so HF dataset consumers can audit the
 LLM-pipeline filters and annotations that produced each row. Each entry's
@@ -102,14 +109,35 @@ RELEASE_FILES: dict[str, dict[str, object]] = {
             "healthbench_criteria.jsonl",
         ],
         # Per-row reasoning side-files for the LLM-pipeline annotations.
-        # source.metadata.key_fact_extraction on each row carries the
-        # summary + key_facts; the matching `*_reasoning.jsonl` here adds
-        # the full chain-of-thought (~1 KB per row) for audit. Joined by
-        # row_id. Paths are relative to benchmark_dir.
+        # source.metadata.key_fact_extraction and source.metadata.obgyn_classification
+        # on each row carry the summary/keyfacts and category/rationale; the
+        # matching `*_reasoning.jsonl` files here add the model's full
+        # chain-of-thought for audit. Joined by row_id. Paths are relative
+        # to benchmark_dir and preserved in the staging dir.
         "audit_files": [
+            # Keyfact-extractor reasoning (open-ended sources with reference
+            # answers — used to compute keyfact recall in evaluation).
             "key_facts/whb_keyfacts_reasoning.jsonl",
             "key_facts/afrimedqa_saq_keyfacts_reasoning.jsonl",
             "key_facts/kenya_keyfacts_reasoning.jsonl",
+            # OBGYN-classifier reasoning (every source — captured for ALL
+            # source rows including those filtered out as NONE, so consumers
+            # can audit why any row was dropped vs kept).
+            "classification_verdicts/oss_eval_reasoning.jsonl",
+            "classification_verdicts/hard_reasoning.jsonl",
+            "classification_verdicts/kenya_reasoning.jsonl",
+            "classification_verdicts/medqa_usmle_reasoning.jsonl",
+            # 397B cross-classifier evidence (Qwen3.5-397B-A17B-FP8 run with
+            # identical prompt v8 on HealthBench oss_eval). 98.12% agreement
+            # with the 27B; see the dataset card §"Cross-classifier
+            # consistency check".
+            "classification_verdicts/oss_eval.qwen3_397b_v8.jsonl",
+            "classification_verdicts/oss_eval_reasoning.qwen3_397b_v8.jsonl",
+            # Honest disclosure: 7 oss_eval prompts (2 also in hard, 3 in
+            # consensus) on which the 27B classifier did not converge within
+            # 64K reasoning tokens at temp=0; documented in the dataset card.
+            "classification_verdicts/oss_eval_excluded.jsonl",
+            "classification_verdicts/hard_excluded.jsonl",
         ],
         # LLM-pipeline prompts referenced by each row's prompt_version field.
         # Bundle them with the release so consumers can audit what the
@@ -124,6 +152,62 @@ RELEASE_FILES: dict[str, dict[str, object]] = {
 }
 
 DATASET_CARD = Path("docs/huggingface_dataset_card.md")
+
+
+AUDIT_README = """# audit/ — LLM-pipeline provenance for mamabench v0.2
+
+Everything here is **supporting material**, not benchmark rows. The benchmark
+itself is in `data/` (joined by `id`); the rubric criteria side-table is in
+`side_tables/`. Each file here joins back to benchmark rows by `row_id` so
+you can audit any single decision.
+
+## What's here
+
+- `prompts/` — the exact prompts used by the LLM pipeline, versioned (`v8`).
+  Each benchmark row's `source.metadata.{obgyn_classification,key_fact_extraction}.prompt_version`
+  pins to these files.
+
+- `key_facts/<source>_keyfacts_reasoning.jsonl` — the keyfact extractor's
+  full chain-of-thought for each open-ended row with a reference answer
+  (Kenya, AfriMed-SAQ, WHB). The keyfacts themselves are already inlined
+  on each benchmark row under `source.metadata.key_fact_extraction`; the
+  reasoning is the model's `<think>` block for that extraction.
+
+- `classification_verdicts/<source>_reasoning.jsonl` — the OBGYN classifier's
+  full chain-of-thought for **every** source row (4 sources × thousands of
+  rows). Included rows have their verdict inlined on the benchmark row
+  under `source.metadata.obgyn_classification`; reasoning here adds the
+  `<think>` block. Excluded (`NONE`-classified) rows also appear here so
+  you can audit why something was dropped.
+
+- `classification_verdicts/oss_eval.qwen3_397b_v8.jsonl` + reasoning side-
+  file — **397B cross-classifier evidence**. The default v0.2 classifier
+  is Qwen3.6-27B-FP8; we also ran Qwen3.5-397B-A17B-FP8 on HealthBench
+  `oss_eval` with the identical prompt v8 and saw 98.12% agreement. The
+  larger-model verdicts and reasoning are preserved here for audit.
+
+- `classification_verdicts/{oss_eval,hard}_excluded.jsonl` — 7 HealthBench
+  `oss_eval` prompts (+ 2 also in `hard`) on which the 27B classifier did
+  not converge within 64K reasoning tokens at temperature=0. Each entry
+  records the full prompt text and exclusion reason. The 397B classified
+  all 7 as `NONE` (non-OBGYN), so excluding them does not change the
+  filtered row set; this file documents what would otherwise be silent.
+
+## Join pattern
+
+```python
+import json
+verdicts = {}
+for line in open("audit/classification_verdicts/oss_eval_reasoning.jsonl"):
+    r = json.loads(line)
+    verdicts[r["row_id"]] = r  # {row_id, source, model, prompt, input, params, output: {content, reasoning}}
+
+# For any benchmark row in data/healthbench_oss_eval.jsonl, look up by
+# row.source.id (which equals row_id here).
+```
+
+See the dataset card (`/README.md`) for the full description.
+"""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -174,11 +258,12 @@ def main(argv: list[str] | None = None) -> int:
     # with the benchmark rows.
     for name in spec["side_tables"]:  # type: ignore[union-attr]
         plan.append((ROOT / benchmark_dir / name, staging_dir / "side_tables" / name))
-    # Audit-only side-files (per-row LLM-pipeline reasoning traces). Paths
-    # under benchmark_dir are preserved in the staging dir so the layout is
-    # `staging/key_facts/<file>` mirroring the working tree.
+    # Audit-only side-files (per-row LLM-pipeline reasoning traces, prompts,
+    # cross-classifier evidence, dropped-row disclosures). All consolidated
+    # under `audit/` in the release so the top-level layout cleanly separates
+    # benchmark rows (`data/`, `side_tables/`) from provenance.
     for name in spec.get("audit_files", []):  # type: ignore[union-attr]
-        plan.append((ROOT / benchmark_dir / name, staging_dir / name))
+        plan.append((ROOT / benchmark_dir / name, staging_dir / "audit" / name))
     for name in spec["manifests"]:  # type: ignore[union-attr]
         plan.append((ROOT / benchmark_dir / "manifests" / name, staging_dir / "manifests" / name))
     plan.append((schema_json, staging_dir / "schema" / schema_json.name))
@@ -187,10 +272,11 @@ def main(argv: list[str] | None = None) -> int:
     # Tree plan: (src_dir_or_file, dst_under_staging). Items in spec["prompts"]
     # name either files OR directories under ./prompts/; directories are
     # copied recursively so the modular obgyn_classifier/ folder lands intact.
+    # Prompts go under `audit/prompts/` for the v0.2+ consolidated layout.
     tree_plan: list[tuple[Path, Path]] = []
     for name in spec.get("prompts", []):  # type: ignore[union-attr]
         src = ROOT / "prompts" / name
-        dst = staging_dir / "prompts" / name
+        dst = staging_dir / "audit" / "prompts" / name
         tree_plan.append((src, dst))
 
     missing = [src for src, _ in plan if not src.is_file()]
@@ -214,6 +300,14 @@ def main(argv: list[str] | None = None) -> int:
             shutil.copytree(src, dst)
         else:
             shutil.copy2(src, dst)
+
+    # Drop a short reader-facing README inside audit/ so consumers landing
+    # there from the HF file browser understand the join pattern without
+    # bouncing back to the dataset card.
+    audit_dir = staging_dir / "audit"
+    if audit_dir.is_dir():
+        audit_readme = audit_dir / "README.md"
+        audit_readme.write_text(AUDIT_README)
 
     _print_staged_layout(staging_dir)
     _print_publish_commands(staging_dir, benchmark_version=args.release)

@@ -230,6 +230,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=50,
         help="Print a progress line every N rows classified (default 50).",
     )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=300.0,
+        help="HTTP request timeout in seconds. Raise for thinking-mode rows "
+        "whose reasoning regularly exceeds 300s (default 300.0).",
+    )
     return parser
 
 
@@ -269,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         base_url=args.base_url,
         api_key=args.api_key,
         temperature=args.temperature,
+        timeout=args.timeout,
         json_schema=VERDICT_JSON_SCHEMA if use_json_schema else None,
         disable_thinking=args.disable_thinking,
         schema_name="verdict",

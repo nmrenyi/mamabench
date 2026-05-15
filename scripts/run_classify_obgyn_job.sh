@@ -31,6 +31,7 @@ TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-1}"
 WORKERS="${WORKERS:-8}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
 GUIDED_JSON="${GUIDED_JSON:-0}"
+TIMEOUT="${TIMEOUT:-300}"
 
 : "${SOURCE:?ERROR: SOURCE must be set}"
 : "${INPUT_PATH:?ERROR: INPUT_PATH must be set}"
@@ -175,6 +176,7 @@ CLASSIFIER_ARGS=(
   --api-key EMPTY
   --workers "$WORKERS"
   --temperature "$TEMPERATURE"
+  --timeout "$TIMEOUT"
 )
 if [[ -n "$MODE" ]]; then
   CLASSIFIER_ARGS+=(--mode "$MODE")

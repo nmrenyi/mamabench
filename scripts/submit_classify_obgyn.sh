@@ -69,6 +69,7 @@ WORKERS="${WORKERS:-8}"
 LIMIT="${LIMIT:-}"
 GUIDED_JSON="${GUIDED_JSON:-0}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
+TIMEOUT="${TIMEOUT:-300}"
 
 # ── vLLM config ───────────────────────────────────────────────────
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
@@ -155,6 +156,7 @@ for shard in $(seq 0 $((SHARD_COUNT - 1))); do
     -e LIMIT="$LIMIT" \
     -e GUIDED_JSON="$GUIDED_JSON" \
     -e TEMPERATURE="$TEMPERATURE" \
+    -e TIMEOUT="$TIMEOUT" \
     -e MAX_MODEL_LEN="$MAX_MODEL_LEN" \
     -e MAX_NUM_SEQS="$MAX_NUM_SEQS" \
     -e GPU_MEMORY_UTILIZATION="$GPU_MEMORY_UTILIZATION" \

@@ -72,9 +72,13 @@ configs:
 
 # mamabench
 
-[GitHub](https://github.com/nmrenyi/mamabench) · 25,949 normalized rows · schema `v0.4` · release `v0.2`
+[GitHub](https://github.com/nmrenyi/mamabench) · 25,949 normalized rows · schema `v0.4` · release `v0.2.1`
 
 A normalized OBGYN / pediatrics / reproductive-health benchmark for evaluating end-to-end medical question-answering systems. Originally built to evaluate **MAMAI**, a Gemma 4 E4B + RAG medical-advice chatbot for nurses and midwives in Zanzibar.
+
+## Release `v0.2.1`
+
+`v0.2.1` is an **additive patch** over `v0.2`: the benchmark rows, schema, configs, and manifests are byte-identical to `v0.2`. The only addition is the judge-calibration side-file `calibration/obgyn_meta_eval.jsonl` (see ["Judge calibration set"](#judge-calibration-set) below). The benchmark *version* is still `v0.2` — `v0.2.1` is a release tag marking "v0.2 data + the calibration side-file." Anyone pinned to `revision="v0.2"` is unaffected.
 
 ## Release `v0.2`
 
@@ -282,6 +286,31 @@ audit/
 
 All audit JSONLs are joined to benchmark rows by `row_id`. The keyfacts/verdicts themselves are already inlined into each row's `source.metadata.{key_fact_extraction, obgyn_classification}`; the reasoning files add only the model's full chain-of-thought for auditability.
 
+## Judge calibration set
+
+`calibration/obgyn_meta_eval.jsonl` (added in `v0.2.1`) is an OBGYN-scoped slice of HealthBench's **grader meta-evaluation** set. It exists to answer one question: *can you trust the LLM judge you use to score the `open_ended_rubric` track?*
+
+It is **not benchmark rows** — it is not in the loadable configs, not in the row schema, and not counted in the release manifest. Load it directly.
+
+Each row is a `(conversation, completion, single rubric criterion)` triple with independent physician ground-truth labels:
+
+| Field | Meaning |
+|---|---|
+| `prompt` | the conversation (same shape as `open_ended_rubric` `question`) |
+| `completion` | a candidate model response being graded |
+| `rubric` | one rubric criterion (text) |
+| `binary_labels` | list — each physician's met / not-met judgment for that criterion |
+| `anonymized_physician_ids` | which physicians produced those labels |
+| `category` | HealthBench's own criterion category |
+| `mamabench_obgyn_category` | added by mamabench — the OBGYN classifier category of the prompt (`MATERNAL` / `NEONATAL` / `CHILD_HEALTH` / `SEXUAL_AND_REPRODUCTIVE_HEALTH`) |
+| `prompt_id`, `completion_id`, `canary` | identifiers + HealthBench contamination canary |
+
+**Size:** 6,853 criterion-judgments across 872 prompts — `CHILD_HEALTH` 3,239, `MATERNAL` 2,284, `SEXUAL_AND_REPRODUCTIVE_HEALTH` 942, `NEONATAL` 388.
+
+**How to use it:** run your candidate rubric-track judge on each `(prompt, completion, rubric)` triple, predict met / not-met, and compare against the physician `binary_labels` (e.g. F1, Cohen's κ vs physicians). High agreement means the judge's `open_ended_rubric` scores can be trusted; low agreement is a signal to change judge model or prompt.
+
+**How it was derived:** HealthBench's full meta-evaluation set (`oss_meta_eval`, 29,511 rows) was filtered to mamabench's scope by joining each row's `prompt_id` against the OBGYN classifier verdicts (same prompt v8, same verdicts as the `consensus` subset — the meta-eval prompt set is exactly the consensus prompt set). Rows whose prompt is `NONE` are dropped; 20 rows whose prompt the classifier never converged on are also dropped. Reproducible via `scripts/derive_obgyn_meta_eval.py` in the GitHub repo. No new classification run was needed.
+
 ## AfriMed-QA data quality notes (unchanged from v0.1)
 
 The AfriMed-QA MCQ subset went through invasive normalisation during v0.1 to handle multi-answer rows, ambiguous answer positions, and embedded letter prefixes. See the [GitHub README's "AfriMed-QA data quality notes"](https://github.com/nmrenyi/mamabench#afrimed-qa-data-quality-notes) for the full breakdown. The v0.2 AfriMed-MCQ subset uses the same v0.1 rows (just `schema_version` bumped to `0.4`). The new AfriMed-SAQ subset is short-answer questions with clean text.
@@ -295,10 +324,14 @@ MedMCQA, MedQA-USMLE, and AfriMed-QA are present in many model pretraining corpo
 Releases are git tags on this dataset's HF repo. Pin a version for reproducible evaluation:
 
 ```python
-load_dataset("nmrenyi/mamabench", revision="v0.2")
+load_dataset("nmrenyi/mamabench", "kenya", revision="v0.2.1")
 ```
 
-`benchmark_version` (the release) and `schema_version` (the row shape) are tracked independently. v0.1 used schema `0.3`; v0.2 uses schema `0.4`. Every row carries `schema_version` so consumers can detect and adapt to schema changes safely across releases.
+Three version axes are tracked independently:
+
+- **Release tag** — the HF git tag (`v0.1`, `v0.2`, `v0.2.1`). What you pin with `revision=`.
+- **`benchmark_version`** — the version of the benchmark *rows*. `v0.2.1` is an additive patch (calibration side-file only), so its `benchmark_version` is still `v0.2` — the rows did not change.
+- **`schema_version`** — the row shape. v0.1 used schema `0.3`; v0.2 / v0.2.1 use schema `0.4`. Every row carries `schema_version` so consumers can detect and adapt to schema changes safely across releases.
 
 ## Building locally
 

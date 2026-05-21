@@ -9,6 +9,8 @@ Writes a directory tree mirroring the layout the HF dataset will have:
             <per-source JSONLs>
         side_tables/
             healthbench_criteria.jsonl                  (v0.2+ only; rubric side-table)
+        calibration/                                    (v0.2.1+ only — judge-calibration side-file)
+            obgyn_meta_eval.jsonl                       OBGYN-scoped HealthBench grader meta-eval
         manifests/
             <per-source manifest JSONs>
             release_manifest.json
@@ -37,9 +39,11 @@ references a ``prompt_version`` that resolves to the files staged here.
 The script does NOT perform the upload. Inspect the staging directory, then
 push it with `hf upload` and tag the release with `hf repos tag create`.
 
-Default release shape is v0.2 (`--release v0.2`); pass `--release v0.1` for
-the original three-MCQ-source release. Each release locks in its file list
-to avoid surprises if the working tree contains an in-progress next version.
+Default release shape is v0.2.1 (`--release v0.2.1`) — v0.2's benchmark rows
+plus the judge-calibration side-file under calibration/. Pass `--release v0.2`
+for the rows-only shape, or `--release v0.1` for the original three-MCQ-source
+release. Each release locks in its file list to avoid surprises if the working
+tree contains an in-progress next version.
 """
 
 from __future__ import annotations
@@ -151,6 +155,19 @@ RELEASE_FILES: dict[str, dict[str, object]] = {
     },
 }
 
+# v0.2.1 — additive patch over v0.2. The benchmark rows, schema, configs and
+# manifests are byte-identical to v0.2; the only addition is the judge-
+# calibration side-file under calibration/. `benchmark_version` therefore
+# stays "v0.2"; "v0.2.1" is the release tag, not a new benchmark version.
+RELEASE_FILES["v0.2.1"] = {
+    **RELEASE_FILES["v0.2"],
+    # Calibration side-files: paths are relative to benchmark_dir/calibration/
+    # and land under calibration/ in the staged release.
+    "calibration_files": [
+        "obgyn_meta_eval.jsonl",
+    ],
+}
+
 DATASET_CARD = Path("docs/huggingface_dataset_card.md")
 
 
@@ -215,8 +232,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--release",
         choices=sorted(RELEASE_FILES),
-        default="v0.2",
-        help="Which release version's file list to stage (default v0.2).",
+        default="v0.2.1",
+        help="Which release version's file list to stage (default v0.2.1).",
     )
     parser.add_argument(
         "--staging-dir",
@@ -264,6 +281,16 @@ def main(argv: list[str] | None = None) -> int:
     # benchmark rows (`data/`, `side_tables/`) from provenance.
     for name in spec.get("audit_files", []):  # type: ignore[union-attr]
         plan.append((ROOT / benchmark_dir / name, staging_dir / "audit" / name))
+    # Calibration side-files (judge-calibration data — not benchmark rows, not
+    # in the loadable configs, not counted in the release manifest). Shipped
+    # under calibration/ alongside side_tables/ and audit/.
+    for name in spec.get("calibration_files", []):  # type: ignore[union-attr]
+        plan.append(
+            (
+                ROOT / benchmark_dir / "calibration" / name,
+                staging_dir / "calibration" / name,
+            )
+        )
     for name in spec["manifests"]:  # type: ignore[union-attr]
         plan.append((ROOT / benchmark_dir / "manifests" / name, staging_dir / "manifests" / name))
     plan.append((schema_json, staging_dir / "schema" / schema_json.name))
